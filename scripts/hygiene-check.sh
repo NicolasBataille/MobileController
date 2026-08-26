@@ -8,7 +8,10 @@
 #      appear in anything that executes. Prose is exempt (*.md), because the whole point of
 #      the documentation is to tell contributors *not* to do these things: the planning docs
 #      and the skill's pitfalls reference both `pkill` and the private-framework names by
-#      name. A rule that cannot be written down is not a rule.
+#      name. A rule that cannot be written down is not a rule. For the same reason `pkill`
+#      is only flagged in *command position* (start of line / after `;`, `&`, `|`, `(`,
+#      `$(`), so a comment or a grep pattern that forbids it is not a hit while an actual
+#      invocation is.
 #
 #   2. Leakage — absolute home paths and simulator UDIDs. Scanned everywhere, prose
 #      included, because a leaked path or UDID is just as public in a README as in a script.
@@ -27,7 +30,9 @@ cd "$(git rev-parse --show-toplevel)"
 readonly SELF=':!scripts/hygiene-check.sh'
 readonly PROSE=':!*.md'
 
-readonly MECHANISM_PATTERN='dlopen|AXPTranslator|SimulatorKit|pkill'
+readonly PRIVATE_API_PATTERN='dlopen|AXPTranslator|SimulatorKit'
+readonly REAPER_PATTERN='(^|[;&|(]|\$\()[[:space:]]*(sudo[[:space:]]+)?pkill([[:space:]]|$)'
+readonly MECHANISM_PATTERN="$PRIVATE_API_PATTERN|$REAPER_PATTERN"
 readonly HOME_PATH_PATTERN='/Users/[A-Za-z0-9_-][A-Za-z0-9._-]*'
 readonly UDID_PATTERN='[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}'
 readonly LEAK_PATTERN="$HOME_PATH_PATTERN|$UDID_PATTERN"
