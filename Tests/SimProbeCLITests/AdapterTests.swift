@@ -170,6 +170,23 @@ final class AdapterTests: XCTestCase {
         return found?.status == 0
     }
 
+    /// The deadline a poll loop computes has to reach the child process.
+    ///
+    /// Both halves of the chain are tested above, but neither notices if this middle link
+    /// stops forwarding: `wait-stable` would go back to being unbounded in the one situation
+    /// the deadline exists for, and every hermetic test would still pass.
+    func testCaptureForwardsItsDeadlineToTheRunner() throws {
+        let runner = StubProcessRunner(standardOutput: "not an image")
+        let capture = SimctlScreenCapture(simctl: "/usr/bin/true", runner: runner)
+
+        // The capture fails at decode - no file was written - which is beside the point here.
+        XCTAssertThrowsError(try capture.capture(udid: Fixtures.udid, deadlineMs: 1_234))
+        XCTAssertEqual(runner.invocations.first?.deadlineMs, 1_234)
+
+        XCTAssertThrowsError(try capture.capture(udid: Fixtures.udid))
+        XCTAssertEqual(runner.invocations.last?.deadlineMs, ProcessDeadline.defaultMs)
+    }
+
     func testSystemProcessRunnerCapturesBothStreams() throws {
         let result = try SystemProcessRunner().run(
             "/bin/sh", ["-c", "echo out; echo err >&2; exit 7"])
