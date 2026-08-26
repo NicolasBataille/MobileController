@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Build
+        run: swift build
+
+      # No simulator is booted on the runner. Simulator-dependent tests are guarded by
+      # SIMPROBE_LIVE and skip themselves, so this stays green (PRD A5).
+      - name: Test with coverage
+        run: swift test --enable-code-coverage
+
+      - name: Lint formatting
+        run: swift format lint --strict --recursive Sources Tests
+
+  hygiene:
+    name: Hygiene
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Public-repo hygiene
+        run: ./scripts/hygiene-check.sh
