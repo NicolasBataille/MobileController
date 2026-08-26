@@ -4,5 +4,5 @@
 /// Everything a function needs arrives as a parameter.
 public enum SimProbeCore {
     /// Version of the library, reported by `simprobe --version`.
-    public static let version = "0.1.0-dev"
+    public static let version = "0.1.0"
 }
