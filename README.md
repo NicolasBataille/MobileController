@@ -55,7 +55,7 @@ named `homebrew-simprobe` and without an explicit URL `brew tap` looks for one t
 exist. The `brew trust` line is not, because Homebrew 6 refuses to load a formula from a
 third-party tap until you say so: without it `brew install` stops with *"Refusing to load
 formula … from untrusted tap"* and prints the command to run. Read `Formula/simprobe.rb`
-before you trust it — it is forty lines and it builds from the tagged source tarball.
+before you trust it — it is under fifty lines and it builds from the tagged source tarball.
 
 The formula builds the release tarball from source (`swift build -c release`), which takes
 30-90 s depending on the machine. There is no bottle.
