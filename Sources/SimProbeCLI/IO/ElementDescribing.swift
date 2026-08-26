@@ -12,8 +12,9 @@ public protocol ElementDescribing {
 /// Locating `idb`, and saying how to get it when it is not there.
 ///
 /// `idb` is the only thing on this machine that will hand over accessibility frames without a
-/// private framework: `simctl` has no equivalent, and `dlopen`ing the translator is exactly
-/// what this repository refuses to do.
+/// private framework: `simctl` has no equivalent, and loading Apple's private translator at
+/// runtime is exactly the mechanism this repository refuses to use — see
+/// `scripts/hygiene-check.sh`, which fails the build on it.
 public enum Idb {
 
     /// What to run to get `idb`. Both halves are needed — the companion is the native side,
