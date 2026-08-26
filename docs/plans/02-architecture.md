@@ -116,7 +116,7 @@ $ simprobe motion 600
 t=0 11.00, 210 3.20, 415 0.40, 620 0.01  ->  settled@415ms (4 samples, 4.9 fps)
 
 $ simprobe motion 600 --json
-{"settledAtMs":415,"samples":[{"tMs":0,"diff":11.0},{"tMs":210,"diff":3.2},
+{"settledAtMs":415,"hadMotion":true,"samples":[{"tMs":0,"diff":11.0},{"tMs":210,"diff":3.2},
  {"tMs":415,"diff":0.4},{"tMs":620,"diff":0.01}],"tol":0.5,"fps":4.9}
 ```
 Zero image bytes on stdout in either form. `--keep-frames <dir>` writes PNGs for a human.
