@@ -324,6 +324,22 @@ The design is written down before the code, in three documents:
   exit codes.
 - [Task list](docs/plans/03-task-list.md) — phased tasks with their TDD red steps.
 
+## Known upstream limitations (agent-device 0.20.10)
+
+Observed while building and benchmarking this project. The skill's `references/pitfalls.md`
+carries the workaround for each; they are candidates for upstream issues on
+[callstack/agent-device](https://github.com/callstack/agent-device).
+
+1. `close` reports success but does not release the device lease, so the next `open`
+   fails with `DEVICE_IN_USE` unless the same `--session` is reused.
+2. `batch` excludes `press` / `fill` / `click`, so an observe → act → verify sequence
+   cannot be amortised into one call.
+3. `fill @ref ""` is rejected with `INVALID_ARGS`; there is no clear-field primitive.
+4. `--device <udid>` fails with `DEVICE_NOT_FOUND` without hinting at `--udid`, which
+   exists but is missing from the global-flags help.
+5. The implicit cwd-hash session name coexists with an explicit `--session`, so two
+   shells in different directories silently drive two sessions on one device.
+
 ## Credits
 
 - [agent-device](https://github.com/callstackincubator/agent-device) by callstack — MIT.
