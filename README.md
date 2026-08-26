@@ -1,7 +1,8 @@
 # MobileController
 
-**Status: pre-alpha.** Nothing here is stable yet. The plans are written, and the
-`simprobe` CLI verbs have landed; the skill and the benchmark harness have not.
+**Status: v0.1.0 (alpha).** The `simprobe` CLI, the Claude Code skill, the benchmark
+harness and the DemoApp are all in place and measured on a real simulator. Expect rough
+edges; the pinned tool versions below are the only combination tested so far.
 
 Token-efficient tooling for driving an **iOS Simulator** from a Claude Code agent.
 
