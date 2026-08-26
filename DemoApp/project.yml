@@ -1,0 +1,60 @@
+# XcodeGen spec for DemoApp — the deterministic bench target of MobileController.
+# The generated DemoApp.xcodeproj is git-ignored on purpose (root .gitignore: *.xcodeproj).
+#
+#   cd DemoApp && xcodegen generate
+#   xcodebuild -scheme DemoApp -destination 'generic/platform=iOS Simulator' build
+
+name: DemoApp
+
+options:
+  bundleIdPrefix: dev.mobilecontroller
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    # Simulator-only target: never prompt for a signing team in CI or on a fresh clone.
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+
+targets:
+  DemoApp:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_NAME: DemoApp
+        PRODUCT_BUNDLE_IDENTIFIER: dev.mobilecontroller.demoapp
+        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "1.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: "YES"
+        # Without a generated launch screen the app runs letterboxed, which would
+        # corrupt every screenshot / motion measurement taken against it.
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        INFOPLIST_KEY_CFBundleDisplayName: DemoApp
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: "YES"
+        # Portrait only: one fixed geometry, so frames are comparable across runs.
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        ENABLE_USER_SCRIPT_SANDBOXING: "YES"
+
+schemes:
+  DemoApp:
+    build:
+      targets:
+        DemoApp: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
