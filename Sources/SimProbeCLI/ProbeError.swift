@@ -22,20 +22,34 @@ public enum ProbeError: Error, Equatable, Sendable {
     /// `simctl` ran and reported a failure.
     case simctlFailed(command: String, detail: String)
 
+    /// No simulator is booted, so there is nothing to resolve an omitted `--udid` to.
+    case noBootedDevice
+
+    /// More than one device answers to what was asked for; guessing would be worse than
+    /// stopping, because acting on the wrong simulator is silent and expensive.
+    case ambiguousDevice(requested: String?, candidates: [SimulatorDevice])
+
+    /// Nothing on this machine matches the requested name or UDID.
+    case deviceNotFound(String)
+
     /// A screenshot could not be taken or the resulting file could not be decoded.
     case captureFailed(String)
 
     /// A frame operation from `SimProbeCore` failed, e.g. two frames of different sizes.
     case frameFailure(String)
 
+    /// A file the user named is not a decodable image.
+    case imageUnreadable(String)
+
     /// The process exit status this error produces.
     public var exitCode: Int32 {
         switch self {
         case .invalidArgument:
             return 1
-        case .simctlUnavailable, .simctlFailed:
+        case .simctlUnavailable, .simctlFailed, .noBootedDevice, .ambiguousDevice,
+            .deviceNotFound:
             return 2
-        case .captureFailed, .frameFailure:
+        case .captureFailed, .frameFailure, .imageUnreadable:
             return 5
         }
     }
@@ -46,8 +60,12 @@ public enum ProbeError: Error, Equatable, Sendable {
         case .invalidArgument: return "invalidArgument"
         case .simctlUnavailable: return "simctlUnavailable"
         case .simctlFailed: return "simctlFailed"
+        case .noBootedDevice: return "noBootedDevice"
+        case .ambiguousDevice: return "ambiguousDevice"
+        case .deviceNotFound: return "deviceNotFound"
         case .captureFailed: return "captureFailed"
         case .frameFailure: return "frameFailure"
+        case .imageUnreadable: return "imageUnreadable"
         }
     }
 }
@@ -61,10 +79,20 @@ extension ProbeError: CustomStringConvertible {
             return "simctl unavailable: \(detail)"
         case .simctlFailed(let command, let detail):
             return "simctl \(command) failed: \(detail)"
+        case .noBootedDevice:
+            return "no booted simulator; boot one or pass --udid"
+        case .ambiguousDevice(let requested, let candidates):
+            let subject =
+                requested.map { "'\($0)' matches" } ?? "more than one simulator is booted:"
+            return "\(subject) \(candidates.map(\.summary).joined(separator: ", ")); pass --udid"
+        case .deviceNotFound(let requested):
+            return "no simulator named or identified by '\(requested)'"
         case .captureFailed(let detail):
             return "capture failed: \(detail)"
         case .frameFailure(let detail):
             return "frame error: \(detail)"
+        case .imageUnreadable(let path):
+            return "could not read an image at \(path)"
         }
     }
 }

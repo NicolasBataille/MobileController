@@ -48,7 +48,7 @@ public enum ImageDecoder {
             CGImageSourceGetCount(source) > 0,
             let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
         else {
-            throw ProbeError.captureFailed("could not decode an image at \(url.path)")
+            throw ProbeError.imageUnreadable(url.path)
         }
         return image
     }
