@@ -198,9 +198,12 @@ file declaring numbered steps. For every step the harness records:
   the CSV is unusable across machines. `agent-device --cost` (`cost.wallClockMs`) is recorded
   alongside where available, as the engine's own view of the same step.
 - Output: `bench/out/<timestamp>/results.csv` plus a rendered markdown table.
-- **Teardown is `agent-device close` then `agent-device daemon stop`. No `pkill`, ever** —
-  reaping the in-simulator runner poisons accessibility device-wide until reboot. `run.sh`
-  contains a comment saying so at the teardown site, and CI greps the repo for `pkill`.
+- **Teardown is `agent-device close` then `agent-device daemon stop --clean` (the sanctioned
+  reclaim of retained runner processes and leases). No `pkill`, ever** — reaping the
+  in-simulator runner poisons accessibility device-wide until reboot. (The in-sim runner also
+  idle-stops on its own after ~5 min by default, so surviving processes are time-bounded
+  regardless.) `run.sh` contains a comment saying so at the teardown site, and CI greps the
+  repo for `pkill`.
 - User-specific targets (a private app's bundle id, a device name) come from a git-ignored
   `bench/local.env` or `SIMPROBE_*` environment variables. Nothing user-specific is committed.
 

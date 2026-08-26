@@ -56,9 +56,8 @@ final class StabilityEvaluatorTests: XCTestCase {
     func testObservingFramesComputesTheDiffAgainstThePreviousFrame() throws {
         let evaluator = StabilityEvaluator(quietPollsRequired: 1, startedAtMs: 0)
 
-        let settled = try evaluator
-            .observing(try uniformFrame(luminance: 40), atMs: 0)
-            .observing(try uniformFrame(luminance: 40), atMs: 60)
+        let baseline = try evaluator.observing(try uniformFrame(luminance: 40), atMs: 0)
+        let settled = try baseline.observing(try uniformFrame(luminance: 40), atMs: 60)
 
         XCTAssertEqual(settled.verdict, .settled(afterMs: 60, polls: 1))
         XCTAssertEqual(try XCTUnwrap(settled.lastDiff), 0, accuracy: 1e-9)

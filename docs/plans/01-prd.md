@@ -12,8 +12,9 @@ dominant cost.** Secondary failures found in measurement:
 
 - The accessibility tree is **silently truncated during animation** (1–20 nodes instead of
   the settled 42), returning fast and wrong rather than slow.
-- HID-keycode text entry is **corrupted on non-QWERTY simulators** (`example.com` →
-  `Exq,ple:co,`), and the usual select-all workaround sends Cmd+Q on AZERTY, quitting the app.
+- HID-keycode text entry is **corrupted on non-QWERTY simulators**, observed on sim-use 0.13.0
+  (`example.com` → `Exq,ple:co,`), and its select-all `key-combo` workaround sends Cmd+Q on
+  AZERTY, quitting the app.
 - No tool answers "did the animation finish, and did it actually move?" **without sending
   images** to the model.
 - Full-resolution screenshots cost ~4,200 vision tokens each; the same screen at 1x logical
@@ -73,7 +74,7 @@ dense production SwiftUI screen (60 nodes, 43 interactive). Bytes → tokens est
 |---|---:|---:|---:|
 | `snapshot` (full tree) | 2,266 | ~570 | 580–1,580 ms |
 | `snapshot -i` (interactive only) | 1,295 | ~325 | 450–540 ms |
-| `snapshot -i --level digest` | 510 | ~128 | ~450 ms |
+| `--level digest snapshot -i --json` | 510 | ~128 | ~450 ms |
 | `screenshot` (402x874 @1x PNG) | 172,078 | **468 vision** | ~1,130 ms |
 | Reference tool, default outline | 2,380 | ~595 | 5–12 s |
 | Reference tool, full-res PNG | 2,352,036 | **4,216 vision** | ~2–3 s |
@@ -109,7 +110,8 @@ does **not** work: a screen with a micro-animation never produces two identical 
 
 Encodes the conventions, so the agent does not rediscover them per session:
 
-- **Observation escalation ladder.** Start at `snapshot -i --level digest` (~510 B). Escalate
+- **Observation escalation ladder.** Start at `--level digest snapshot -i` (~510 B, measured
+  with `--json`; `--level` is a global flag, not a `snapshot` flag). Escalate
   to `snapshot -i` (~1.3 KB) only when the digest lacks the target. Escalate to the full tree
   (~2.3 KB) only for structure questions. Take a screenshot (~468 vision tokens) only for
   rendering questions the tree cannot answer.
@@ -123,9 +125,11 @@ Encodes the conventions, so the agent does not rediscover them per session:
 - **Text entry.** Always `fill` (XCUITest `typeText`, layout-independent — verified verbatim
   on an AZERTY simulator). **Never** HID `type`/keycodes for real text.
 - **Field clear recipe.** No clear primitive exists (`fill @ref ""` → `INVALID_ARGS: Expected
-  text to be a non-empty string`). Read the value's length via `get`, send that many delete
-  keys. **Never** letter keycodes or a select-all `key-combo`: on AZERTY, Cmd+HID('a') is
-  **Cmd+Q** and quits the app under test.
+  text to be a non-empty string`; `keyboard` only supports `status|get|dismiss|enter|return`).
+  Use the app's own clear button, or `press @<delete-key> --count N` on the keyboard AX element
+  (unverified end-to-end; the key label is locale-dependent). **Never** a select-all
+  `key-combo` — on sim-use 0.13.0, Cmd+HID('a') on AZERTY is **Cmd+Q** and quits the app under
+  test; agent-device has no `key`/`key-combo` primitive at all.
 - **Launch with fixtures.** `open <bundle> --launch-args <arg>` (repeatable, forwarded
   verbatim) instead of a separate `simctl launch`.
 - **Session hygiene.** Always pass an explicit `--session`. The implicit session name is a
@@ -136,10 +140,12 @@ Encodes the conventions, so the agent does not rediscover them per session:
   share a name. `--udid <udid>` exists in 0.20.10's selection-flag table — pin with it, and
   resolve name→UDID with `simprobe devices --json`.
 - **REAPER GUARD.** After `close`, three processes stay alive **by design**: the node daemon,
-  `xcodebuild test-without-building`, and an in-simulator `AgentDeviceRunner`. `pkill`-ing the
-  in-simulator runner **poisons accessibility device-wide for every tool on that simulator
+  `xcodebuild test-without-building`, and an in-simulator `AgentDeviceRunner` — the in-sim
+  runner idle-stops on its own after ~5 min by default, so this is time-bounded. `pkill`-ing
+  the in-simulator runner **poisons accessibility device-wide for every tool on that simulator
   until reboot** (reproduced: `describe-all` then returns 1 element, frame 0x0, for every app).
-  Teardown is `close`, then `daemon stop` if resources must be released. Never `pkill`.
+  Teardown is `close`, then `daemon stop --clean` (the sanctioned reclaim) if resources must be
+  released sooner. Never `pkill`.
 - Pinned compatibility: **agent-device 0.20.10 / Xcode 26.6 / iOS 26.5**.
 
 ### (b) `simprobe` — a probe CLI in Swift
@@ -191,7 +197,7 @@ hides that is worse than none. Emits CSV plus a markdown table. Targets are Appl
 2. `batch` excludes `press`/`fill`/`click`: "Batch step 1 command is not available through
    command batch: press".
 3. `fill @ref ""` rejected with `INVALID_ARGS` — no clear-field primitive exists.
-4. `--device <name>` on a UDID fails `DEVICE_NOT_FOUND` without hinting at `--udid`, which is
-   itself absent from the global-flags help.
+4. `--device <name>` on a UDID fails `DEVICE_NOT_FOUND` without hinting at `--udid`, which
+   exists but is not discoverable in Global Flags help.
 5. The implicit cwd-hash session name coexisting with an explicit `--session` is a footgun;
    consider warning when both exist for one device.
