@@ -42,9 +42,18 @@ public struct SimctlScreenCapture: ScreenCapturing {
 /// Reads an image file into a `CGImage`.
 public enum ImageDecoder {
 
-    /// - Throws: `ProbeError.captureFailed` when the file is missing or not a decodable image.
+    /// Decodes from the file's **bytes**, never from the file itself.
+    ///
+    /// `CGImageSourceCreateWithURL` decodes lazily and the resulting `CGImage` keeps referring
+    /// to the file on disk. A capture whose temporary directory is removed in a `defer` would
+    /// then hand back an image that draws as solid black - every diff reads 0.00 and every
+    /// screen looks settled, with nothing anywhere reporting a failure. Reading the bytes first
+    /// binds the image to memory that outlives the file.
+    ///
+    /// - Throws: `ProbeError.imageUnreadable` when the file is missing or not a decodable image.
     public static func decode(contentsOf url: URL) throws -> CGImage {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+        guard let data = try? Data(contentsOf: url),
+            let source = CGImageSourceCreateWithData(data as CFData, nil),
             CGImageSourceGetCount(source) > 0,
             let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
         else {

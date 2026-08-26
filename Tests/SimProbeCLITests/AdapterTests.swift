@@ -1,9 +1,26 @@
 import ArgumentParser
+import CoreGraphics
 import Foundation
 import SimProbeCore
 import XCTest
 
 @testable import SimProbeCLI
+
+/// Stands in for `simctl io … screenshot <file>`: writes a real PNG where it was told to.
+private final class PNGWritingRunner: ProcessRunning {
+
+    private let image: CGImage
+
+    init(image: CGImage) { self.image = image }
+
+    func run(_ executable: String, _ arguments: [String]) throws -> ProcessResult {
+        guard let path = arguments.last else {
+            return ProcessResult(status: 1, standardOutput: Data(), standardError: "no path")
+        }
+        try ImageEncoder.writePNG(image, to: URL(fileURLWithPath: path))
+        return ProcessResult(status: 0, standardOutput: Data(), standardError: "")
+    }
+}
 
 /// The thin adapters between the verbs and the outside world.
 final class AdapterTests: XCTestCase {
@@ -93,6 +110,24 @@ final class AdapterTests: XCTestCase {
             "watchOS 11.0"
         )
         XCTAssertEqual(SimctlDeviceLister.runtimeLabel("unavailable"), "unavailable")
+    }
+
+    /// A capture must survive the temporary file it came from being deleted.
+    ///
+    /// `CGImageSourceCreateWithURL` decodes lazily: the returned `CGImage` keeps referring to
+    /// the file, so a capture whose temporary directory is removed in a `defer` hands back an
+    /// image that draws as solid black. Every downstream measurement then reads 0.00 and every
+    /// screen looks settled.
+    func testCaptureSurvivesRemovalOfTheTemporaryFile() throws {
+        let source = try TestFrames.gray(width: 60, height: 40) { x, _ in x < 30 ? 0 : 255 }
+        let capture = SimctlScreenCapture(
+            simctl: "/usr/bin/true", runner: PNGWritingRunner(image: source))
+
+        let image = try capture.capture(udid: Fixtures.udid)
+
+        let frame = try Frames.thumbnail(of: image)
+        let mean = frame.pixels.reduce(0) { $0 + Int($1) } / frame.pixels.count
+        XCTAssertGreaterThan(mean, 40, "the capture decoded as black after its file was removed")
     }
 
     func testSystemProcessRunnerCapturesBothStreams() throws {

@@ -56,9 +56,13 @@ once for the shell. `agent-device session list` shows what exists before you deb
 `--udid` is missing from the `help commands` Global Flags block (it appears in `help device` usage
 and the CLI flag schema), so it is easy to miss.
 **Workaround.** Resolve name → UDID (`simprobe devices --json`, or `agent-device devices`) and pin
-with `--udid`. Names collide constantly — several local simulators are called "iPhone 17". Live
-`--udid` pinning is **`(unverified)`**; fallback is `--device "<exact name>"` plus a
-snapshot-content assertion before the first mutating action.
+with `--udid`. Names collide constantly — several local simulators are called "iPhone 17".
+Live `--udid` pinning **works** (verified on 0.20.10, three simulators booted, two of them
+iOS 26.5 iPhones): `agent-device --udid <udid> --session <name> open com.apple.Preferences`
+opened on the pinned device and `snapshot -i` returned that device's tree; `xcrun simctl spawn
+<udid> launchctl list` confirmed the app was running on it and not on its sibling. No fallback
+is needed. `--udid` still does not appear in the `help commands` Global Flags block, so it
+remains easy to miss.
 
 ## 5. AZERTY / non-QWERTY: `fill` yes, HID keycodes no
 **Symptom.** HID-keycode text entry on an AZERTY-French sim corrupts silently — `example.com` read
@@ -129,3 +133,30 @@ re-observes anyway, press bare. `--verify` is the cheap middle ground (AX digest
 animation, crossfade, Canvas/Lottie view with no AX identity).
 **Cause.** It measures accessibility-tree quiescence, not pixels, and needs an open session.
 **Workaround.** Use `simprobe wait-stable` / `simprobe motion` for rendering questions — `simprobe.md`.
+
+## 12. A slept simulator display screenshots as solid black
+**Symptom.** After a few minutes idle, `xcrun simctl io <udid> screenshot` returns a frame that is
+entirely black while `agent-device snapshot` still returns the full, correct AX tree. Every pixel
+measurement then agrees that the screen is perfectly settled: `simprobe wait-stable` reports
+`stable`, `simprobe motion` reports a timeline of `0.00`, and nothing anywhere reports a failure.
+**Cause.** The simulator auto-locks and the framebuffer goes dark. The accessibility tree is
+unaffected, so an AX-only tool cannot see the difference either — the two layers disagree, and only
+the pixel layer is wrong.
+**Workaround.** Wake with a HID event before any pixel measurement — `idb ui button HOME --udid
+<udid>` or `idb ui tap --udid <udid> <x> <y>`; `xcrun simctl launch` and `openurl` do **not** wake
+it. For a long run, set Auto-Lock to Never in Settings ▸ Display & Brightness. Guard the
+measurement itself: a capture whose thumbnail has fewer than ~8 distinct tones is a blank frame,
+not a settled screen (`LiveSmokeTests.testLiveCaptureIsNotBlank`).
+
+## 13. A lazily decoded screenshot goes black when its file is deleted
+**Symptom.** A capture pipeline that writes `simctl io … screenshot` to a temporary file, decodes
+it, and removes the file in a `defer` hands back a `CGImage` that draws as solid black. The PNG on
+disk is 2.9 MB of real content; the JPEG re-encoded from the decoded image is 6.7 KB of nothing.
+**Cause.** `CGImageSourceCreateWithURL` decodes **lazily**. The returned `CGImage` keeps referring
+to the file, so every later `CGContext.draw` reads a file that no longer exists — and returns black
+rather than an error.
+**Workaround.** Decode from the file's bytes, not from its URL: `Data(contentsOf:)` then
+`CGImageSourceCreateWithData`. This is what `simprobe`'s `ImageDecoder` does, and the regression
+test deletes the file before measuring (`AdapterTests.testCaptureSurvivesRemovalOfTheTemporaryFile`).
+Symptom 12 and this one look identical from the outside; distinguish them by checking the PNG on
+disk before it is removed.
