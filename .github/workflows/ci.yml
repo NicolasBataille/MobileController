@@ -43,3 +43,14 @@ jobs:
 
       - name: Public-repo hygiene
         run: ./scripts/hygiene-check.sh
+
+      # Both suites run on macOS's system bash 3.2 on purpose: the bench library
+      # targets it, and a newer bash on PATH would hide a 3.2 incompatibility.
+      - name: Bench library tests
+        run: /bin/bash bench/lib/test.sh
+
+      # Dry run: the flows are executed end to end with every measured command
+      # recorded instead of run, so no simulator, no agent-device and no Xcode
+      # are involved and the runner stays green without a booted device.
+      - name: Bench flow smoke tests
+        run: /bin/bash bench/flows/test.sh
