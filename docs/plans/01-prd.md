@@ -194,15 +194,17 @@ hides that is worse than none. Emits CSV plus a markdown table. Targets are Appl
 
 - Warm **idb-gRPC action daemon** — 20 ms taps, 51–72 ms trees measured, ~6x latency win.
 - **Frames overlay** from `idb ui describe-all` — agent-device snapshots carry no coordinates.
-- **Batched press sequences** — `batch` currently rejects `press`/`fill`; file upstream.
+- **Batched press sequences** — `batch` already accepts `press`/`fill` given the correct
+  `{"command","input"}` step shape (see pitfalls); worth exploiting more broadly.
 - **Pluggable backends** behind the skill's vocabulary.
 
 ### Upstream issues to file on agent-device
 
 1. `close` reports success but does not release the device lease → next `open` fails
    `DEVICE_IN_USE`.
-2. `batch` excludes `press`/`fill`/`click`: "Batch step 1 command is not available through
-   command batch: press".
+2. `help batch` and its errors do not document the step shape or the batchable set: an
+   object-shaped step written the obvious way fails "unknown legacy field(s)"; the correct shape
+   is `{"command":"press","input":{...}}`, and `press`/`fill`/`click` are batchable.
 3. `fill @ref ""` rejected with `INVALID_ARGS` — no clear-field primitive exists.
 4. `--device <name>` on a UDID fails `DEVICE_NOT_FOUND` without hinting at `--udid`, which
    exists but is not discoverable in Global Flags help.

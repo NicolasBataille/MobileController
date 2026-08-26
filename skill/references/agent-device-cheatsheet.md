@@ -42,7 +42,7 @@ CLI flag schema and verbatim in `help device` / `help doctor` hints.
 | `session` | `session list` \| `session state-dir` \| `session save-script [path] [--force]` |
 | `close` | `close [app] [--shutdown] [--save-script [path]] [--force]` — `--shutdown` also stops the simulator |
 | `daemon` | `daemon stop [--state-dir <path>] [--clean]` — `--clean` removes **retained Apple runner processes and leases** owned by that daemon. This is the sanctioned deep teardown |
-| `batch` | `batch [--steps <json>|--steps-file <path>] [--on-error stop] [--max-steps <n>] [--out <path>]` — **rejects `press`/`fill`/`click`** (pitfalls) |
+| `batch` | `batch [--steps <json>|--steps-file <path>] [--on-error stop] [--max-steps <n>] [--out <path>]` — steps are `{"command":"<name>","input":{...}}`; `press`/`fill`/`click` **are** batchable (pitfalls) |
 | `devices` | `devices` — lists selectable devices/simulators; feed the result to `--platform/--device/--udid/--serial` |
 
 Other verbs worth knowing: `apps`, `appstate`, `boot`, `shutdown`, `install`, `home`,

@@ -32,7 +32,8 @@ stopping") — it is the sanctioned reclaim. The in-sim runner also idle-stops o
 ## 2. `close` succeeds but leaks the device lease
 **Symptom.** `close` returns rc 0 (`Closed: default`, 3.6 s); the next plain `open` fails, twice
 (12.8 s, 10.8 s): `Error (DEVICE_IN_USE): Device is already in use by session "default".`
-**Cause.** `close` ends the session but does not release the host-local device claim.
+**Cause.** `close` ends the session but does not release the host-local device claim. Fixed
+upstream after 0.20.10 (#2057); on 0.20.10 use the workaround below.
 **Workaround.** Reopen under the same explicit session (succeeded in 6.8 s), and keep passing it —
 a bare `snapshot` afterwards fails `SESSION_NOT_FOUND`:
 ```bash
@@ -92,13 +93,20 @@ agent-device snapshot -i         # -> @e38 [key] "supprimer"
 agent-device press @e38 --count 11 --settle
 ```
 
-## 7. `batch` cannot batch UI actions
-**Symptom.** `batch --steps '["press …"]'` → `Batch step 1 command is not available through
-command batch: press`. Object-shaped steps fail earlier: `unknown legacy field(s): args|target|argv`.
-**Cause.** `batch` runs multiple commands in one daemon request but excludes the mutating UI verbs
-(`press`/`click`/`fill`).
-**Workaround.** Chain them in one Bash line — `cmd1 && cmd2 && cmd3` — so a multi-step flow still
-costs one agent round-trip, even though it costs N process spawns.
+## 7. `batch` step shape is undocumented, not the verb set
+**Symptom.** Object-shaped steps written the obvious way fail: `unknown legacy field(s):
+args|target|argv`. `help batch` and the error text never say what a step should look like, so this
+reads as "press/fill/click aren't batchable."
+**Cause.** Step shape, not an exclusion. `press`/`click`/`fill`/`longpress`/`scroll`/`back` are all
+`batchable: true` (already true at 0.20.10) — nothing was ever lifted. Each step must be
+`{"command":"<name>","input":{...}}`, where `input` is exactly the input object that command takes
+on its own; there is no positional/legacy form ([#2062](https://github.com/callstack/agent-device/issues/2062)).
+**Workaround.** Use the shape above:
+```bash
+agent-device batch --steps '[{"command":"press","input":{"target":{"kind":"selector","selector":"id=\"tabBar.list\""}}},{"command":"snapshot","input":{"interactiveOnly":true}}]'
+```
+Use selectors, not `@ref` targets, for any step after the first mutation — a second mutating step
+addressed by `@ref` fails `ref_frame_expired` because the first step invalidates the ref frame.
 
 ## 8. Host load produces hard failures, not slowdowns
 **Symptom.** `fill …` → `Error (COMMAND_FAILED): main thread execution timed out` after ~50 s at

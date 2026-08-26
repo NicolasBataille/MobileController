@@ -179,7 +179,8 @@ functions < 50; no `pkill` anywhere; no personal path, UDID, or private bundle i
   session, `--device` names vs `--udid`, AZERTY (`fill` yes / HID `type` no — the sim-use
   0.13.0 Cmd+HID('a') = Cmd+Q incident, not agent-device), the field-clear recipe (app clear
   button, or `press @<delete-key> --count N` on the keyboard AX element, unverified e2e /
-  locale-dependent label), `batch` excluding `press`/`fill`, `fill @ref ""` rejected,
+  locale-dependent label), `batch`'s undocumented step shape (`press`/`fill` are batchable),
+  `fill @ref ""` rejected,
   degradation under host load (`main thread execution timed out`).
 - DoD: each entry states the observed symptom, the cause, and the workaround, in that order.
 
