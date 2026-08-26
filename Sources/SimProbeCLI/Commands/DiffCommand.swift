@@ -28,18 +28,14 @@ struct DiffCommand: ParsableCommand {
     var json = false
 
     func run() throws {
-        let output = StandardOutput()
-        do {
+        try CommandExit.reporting(json: json) { output in
             let options = DiffOptions(
                 lhs: URL(fileURLWithPath: before),
                 rhs: URL(fileURLWithPath: after),
                 tolerance: tol,
                 json: json
             )
-            try CommandExit.finish(DiffRunner(options: options).run(to: output))
-        } catch let error as ProbeError {
-            ErrorReporter.report(error, json: json, to: output)
-            throw ExitCode(error.exitCode)
+            return try DiffRunner(options: options).run(to: output)
         }
     }
 }

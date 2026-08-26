@@ -73,9 +73,10 @@ public struct WaitStableRunner {
 
     private func humanLine(_ watch: Watch) -> String {
         let verdict = watch.settled ? "stable" : "not stable"
+        let polls = watch.evaluator.polls == 1 ? "poll" : "polls"
         return verdict
             + String(
-                format: " after %dms (%d polls, last diff %.2f, tol %.2f)",
+                format: " after %dms (%d \(polls), last diff %.2f, tol %.2f)",
                 watch.evaluator.elapsedMs,
                 watch.evaluator.polls,
                 watch.evaluator.lastDiff ?? 0,

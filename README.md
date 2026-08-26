@@ -1,7 +1,7 @@
 # MobileController
 
-**Status: pre-alpha.** Nothing here is stable yet. The plans are written, Phase 0/1 of the
-implementation has landed, the CLI verbs have not.
+**Status: pre-alpha.** Nothing here is stable yet. The plans are written, and the
+`simprobe` CLI verbs have landed; the skill and the benchmark harness have not.
 
 Token-efficient tooling for driving an **iOS Simulator** from a Claude Code agent.
 
@@ -52,6 +52,113 @@ The automation engine is installed separately and is not vendored here:
 ```sh
 npm i -g agent-device@0.20.10
 ```
+
+## Using `simprobe`
+
+Five verbs. Every one has a compact human-readable default, a `--json` form, and an exit code
+a shell can branch on. `--udid` accepts a UDID or a device name and defaults to the single
+booted simulator, so most invocations need no target at all.
+
+```
+$ simprobe --help
+OVERVIEW: Answer 'is the screen settled?' about an iOS Simulator, in numbers not pixels.
+
+USAGE: simprobe <subcommand>
+
+OPTIONS:
+  --version               Show the version.
+  -h, --help              Show help information.
+
+SUBCOMMANDS:
+  wait-stable             Poll a simulator's screen until it stops changing.
+  motion                  Report how much a simulator's screen changed over a window of time.
+  shot                    Write one screenshot at 1x logical points and report what it cost.
+  devices                 List the simulators on this machine, booted ones first.
+  diff                    Compare two image files on the same scale the live verbs use.
+```
+
+### `wait-stable [--udid <id>] [--tol 0.5] [--timeout 4s] [--interval 60ms] [--json]`
+
+Captures thumbnails until three consecutive comparisons fall within `--tol`.
+
+```
+$ simprobe wait-stable --udid <id>
+stable after 4212ms (3 polls, last diff 0.00, tol 0.50)
+
+$ simprobe wait-stable --udid <id> --timeout 1s
+not stable after 1367ms (1 poll, last diff 0.00, tol 0.50)
+$ echo $?
+3
+
+$ simprobe wait-stable --udid <id> --json
+{"elapsedMs":2741,"lastDiff":0,"polls":3,"stable":true,"tol":0.5,"udid":"XXXXXXXX-…"}
+```
+
+One `simctl` screenshot costs roughly 0.2-1.1 s depending on host load, and a verdict needs
+four captures, so a settled screen is reported in seconds rather than in the 400 ms the PRD
+hoped for. The default `--timeout 4s` is tight enough on a loaded machine that a static screen
+can be reported as not stable; raise it rather than lowering `--tol`.
+
+### `motion <ms> [--udid <id>] [--tol 0.5] [--keep-frames <dir>] [--json]`
+
+A diff timeline with **zero image bytes on stdout**. The first capture is a baseline, so the
+window starts once there is something to compare against, and every timestamp is measured.
+
+```
+$ simprobe motion 1500 --udid <id>
+t=1074 0.00, 2653 0.00  ->  settled@1074ms (2 samples, 0.6 fps)
+
+$ simprobe motion 1500 --udid <id> --json
+{"fps":0.6,"samples":[{"diff":0,"tMs":1074},{"diff":0,"tMs":2653}],"settledAtMs":1074,"tol":0.5}
+```
+
+`--keep-frames <dir>` is the only path that writes images: one PNG per sample.
+
+### `shot [--udid <id>] [--out shot.jpg] [--width <px>] [--quality 70] [--scale <n>] [--json]`
+
+One screenshot at 1x logical points, so a coordinate read off the image maps 1:1 onto the
+accessibility frame. The framebuffer scale is read from `simctl io <udid> enumerate`
+(`Preferred UI Scale` on the integrated screen), not hardcoded; `--scale` overrides it.
+
+```
+$ simprobe shot --udid <id> --out /tmp/s.jpg
+/tmp/s.jpg  402x874 @1x  jpeg q70  6.5 KB  ~468 vision tokens  (source 1206x2622, 3.0x)
+```
+
+### `devices [--booted] [--json]`
+
+The pinning `agent-device` lacks: its `--device` matches names only, and duplicate names are
+common. Feed the UDID column to `agent-device --udid`.
+
+```
+$ simprobe devices
+BOOTED  iPhone 17          iOS 26.5   XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+        iPhone 17 Pro      iOS 26.5   XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+        iPad Pro 13-inch   iOS 26.4   XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+3 devices, 1 booted
+```
+
+### `diff <before> <after> [--tol 0.5] [--json]`
+
+```
+$ simprobe diff base.png now.png
+diff 0.03  (40x87 gray, tol 0.50)  ->  same
+```
+
+### Exit codes
+
+| Code | Meaning |
+|---:|---|
+| 0 | Success, and for `diff` "same within tolerance" |
+| 1 | Usage or invalid arguments |
+| 2 | Environment: `simctl` missing or failing, no booted simulator, ambiguous `--udid` |
+| 3 | `wait-stable` timed out before the screen settled |
+| 4 | `diff` exceeded tolerance |
+| 5 | Capture or decode failure |
+
+Under `--json`, errors are printed on **stdout** as `{"error":{"code":2,"kind":…,"message":…}}`
+so a caller parsing stdout never has to scrape stderr. Without `--json` the message goes to
+stderr and stdout stays empty.
 
 ## Documentation
 

@@ -39,6 +39,17 @@ final class WaitStableCommandTests: XCTestCase {
         XCTAssertEqual(output.out, "not stable after 300ms (5 polls, last diff 255.00, tol 0.50)")
     }
 
+    func testSinglePollIsReportedInTheSingular() throws {
+        let output = RecordingOutput()
+        let capture = ScriptedCapture(frames: try alternatingFrames(count: 4))
+
+        let code = try WaitStableRunner(options: .init(udid: Fixtures.udid, timeoutMs: 60))
+            .run(in: ProbeEnvironment(capture: capture, clock: VirtualClock(), output: output))
+
+        XCTAssertEqual(code, 3)
+        XCTAssertEqual(output.out, "not stable after 60ms (1 poll, last diff 255.00, tol 0.50)")
+    }
+
     func testJSONOutputMatchesDocumentedKeys() throws {
         let output = RecordingOutput()
         let capture = ScriptedCapture(

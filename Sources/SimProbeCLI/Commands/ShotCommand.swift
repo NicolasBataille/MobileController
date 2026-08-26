@@ -14,11 +14,14 @@ struct ShotCommand: ParsableCommand {
             'Preferred UI Scale' for the integrated screen (3 on current iPhones, 2 on several \
             iPads). Pass --scale to skip that call, or to override it if a future simulator \
             stops reporting it.
+
+            --udid accepts a UDID or a device name; omit it and the single booted \
+            simulator is used, or exit 2 lists the candidates when that is ambiguous.
             """
     )
 
-    @Option(help: "UDID of the simulator to capture.")
-    var udid: String
+    @Option(help: "UDID or name of the simulator to capture. Defaults to the booted one.")
+    var udid: String?
 
     @Option(help: "Where to write the JPEG.")
     var out: String = "shot.jpg"
@@ -36,22 +39,18 @@ struct ShotCommand: ParsableCommand {
     var json = false
 
     func run() throws {
-        let output = StandardOutput()
-        do {
-            let simctl = try Simctl.locate()
+        try CommandExit.reporting(json: json) { output in
+            let session = try ProbeSession.live()
+            let resolved = try session.udid(for: udid)
             let options = ShotOptions(
-                udid: udid,
+                udid: resolved,
                 outputPath: URL(fileURLWithPath: out),
-                scale: try scale ?? SimctlDisplayMetrics(simctl: simctl).scale(udid: udid),
+                scale: try scale ?? session.displayMetrics.scale(udid: resolved),
                 targetWidth: width,
                 quality: quality,
                 json: json
             )
-            let environment = ProbeEnvironment.live(simctl: simctl, output: output)
-            try CommandExit.finish(ShotRunner(options: options).run(in: environment))
-        } catch let error as ProbeError {
-            ErrorReporter.report(error, json: json, to: output)
-            throw ExitCode(error.exitCode)
+            return try ShotRunner(options: options).run(in: session.environment(output: output))
         }
     }
 }
