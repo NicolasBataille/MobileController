@@ -45,7 +45,18 @@ When that drifts, re-run the benchmark before trusting any number here.
 Requires macOS 14+ and a Swift 6.0+ toolchain.
 
 ```sh
-git clone <this-repo> && cd MobileController
+brew tap NicolasBataille/MobileController https://github.com/NicolasBataille/MobileController
+brew install simprobe
+```
+
+The tap URL is not optional: the repository is not named `homebrew-simprobe`, and without an
+explicit URL `brew tap` looks for one that does not exist. The formula builds from the release
+tarball, which takes about 90 s.
+
+From source instead:
+
+```sh
+git clone https://github.com/NicolasBataille/MobileController && cd MobileController
 swift build -c release
 # the binary lands in .build/release/simprobe
 ```

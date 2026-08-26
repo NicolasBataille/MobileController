@@ -23,6 +23,21 @@ swift format lint --recursive Sources Tests
 ./scripts/hygiene-check.sh
 ```
 
+## Cutting a release
+
+The Homebrew formula lives in this repository (`Formula/simprobe.rb`) rather than in a separate
+tap, so it is not bumped for you. After the tag is pushed:
+
+```sh
+./scripts/bump-formula.sh v0.2.0      # rewrites url + sha256 from the real tarball
+brew style Formula/simprobe.rb
+```
+
+then commit `Formula/simprobe.rb` with a `build:` message. A formula left on the previous tag
+still installs cleanly — it just installs the previous binary, silently. Re-running the script
+on the tag the formula already carries is a no-op, so a reviewer can check the bump by running
+it and seeing no diff.
+
 ## Commit messages
 
 Conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `perf:`, `ci:`.

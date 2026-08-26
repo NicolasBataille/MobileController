@@ -13,6 +13,11 @@ All notable changes to this project are documented here. The format follows
   (`brew install facebook/fb/idb-companion && pip3 install fb-idb`), retrying once through
   `idb connect` because the first call after a simulator boots fails by design.
 - Two exit-2 error kinds: `dependencyMissing` (carrying the install line) and `idbFailed`.
+- `Formula/simprobe.rb`: a Homebrew formula living in this repository rather than in a separate
+  tap — `brew tap NicolasBataille/MobileController <url> && brew install simprobe`. Builds from
+  the release tarball with `swift build -c release --disable-sandbox`.
+- `scripts/bump-formula.sh <tag>`: rewrites the formula's url and sha256 from the real tarball,
+  so a release cannot silently ship the previous binary.
 
 ## [0.1.0] — 2026-08-26
 
