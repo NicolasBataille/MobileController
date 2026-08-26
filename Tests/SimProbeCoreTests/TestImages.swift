@@ -39,6 +39,16 @@ enum TestImages {
         try gray(width: width, height: height) { _, _ in luminance }
     }
 
+    /// Dark on the top half, bright on the bottom half, in row order: row 0 is the dark one.
+    static func splitVertically(
+        width: Int,
+        height: Int,
+        top: UInt8,
+        bottom: UInt8
+    ) throws -> CGImage {
+        try gray(width: width, height: height) { _, y in y < height / 2 ? top : bottom }
+    }
+
     /// Dark on the left half, bright on the right half.
     static func splitHorizontally(
         width: Int,

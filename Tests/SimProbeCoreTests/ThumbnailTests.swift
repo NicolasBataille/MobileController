@@ -38,6 +38,28 @@ final class ThumbnailTests: XCTestCase {
         XCTAssertLessThan(leftMean, rightMean)
     }
 
+    /// Row order must survive the downscale.
+    ///
+    /// The left/right split above is blind to a vertically flipped result, and so is every
+    /// mean-absolute-difference reading built on it: a frame and its mirror image score
+    /// identically. This is the only test that would fail if the pixel rows were ever read
+    /// bottom-up.
+    func testDownscalePreservesVerticalOrientation() throws {
+        let source = try TestImages.splitVertically(
+            width: 400,
+            height: 800,
+            top: 20,
+            bottom: 230
+        )
+
+        let frame = try Thumbnail.downscale(source, to: FrameSize(width: 40, height: 87))
+
+        let topMean = meanOfRows(frame, 0..<40)
+        let bottomMean = meanOfRows(frame, 47..<87)
+        XCTAssertLessThan(topMean, 60)
+        XCTAssertGreaterThan(bottomMean, 190)
+    }
+
     func testDownscaleIsDeterministicForSameInput() throws {
         let source = try TestImages.gray(width: 402, height: 874) { x, y in
             UInt8((x &* 7 &+ y &* 13) % 256)
@@ -59,6 +81,18 @@ final class ThumbnailTests: XCTestCase {
         XCTAssertThrowsError(try Thumbnail.downscale(source, to: FrameSize(width: 0, height: 87))) {
             XCTAssertEqual($0 as? FrameError, .invalidTargetSize(width: 0, height: 87))
         }
+    }
+
+    private func meanOfRows(_ frame: GrayFrame, _ rows: Range<Int>) -> Double {
+        var total = 0
+        var count = 0
+        for y in rows {
+            for x in 0..<frame.size.width {
+                total += Int(frame.pixels[y * frame.size.width + x])
+                count += 1
+            }
+        }
+        return count == 0 ? 0 : Double(total) / Double(count)
     }
 
     private func meanOfColumns(_ frame: GrayFrame, _ columns: Range<Int>) -> Double {

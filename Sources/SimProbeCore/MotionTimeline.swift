@@ -76,7 +76,8 @@ public struct MotionTimeline: Equatable, Sendable {
         let parts = samples.map { String(format: "%d %.2f", $0.tMs, $0.diff) }
         let body = parts.joined(separator: ", ")
         let outcome = settledAtMs.map { "settled@\($0)ms" } ?? "not settled"
-        let summary = String(format: "(%d samples, %.1f fps)", samples.count, fps)
+        let noun = samples.count == 1 ? "sample" : "samples"
+        let summary = String(format: "(%d \(noun), %.1f fps)", samples.count, fps)
         let motion = hadMotion ? "" : " (no motion)"
         return "t=\(body)  ->  \(outcome) \(summary)\(motion)"
     }
