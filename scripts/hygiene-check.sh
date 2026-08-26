@@ -21,6 +21,11 @@
 #
 # This file is excluded from both scans: it necessarily contains every pattern it looks for.
 #
+# Both scans use --text rather than skipping binary-flagged files. A file git treats as
+# binary - anything with a NUL byte in it, or anything a .gitattributes says is binary - is
+# exactly where a leaked UDID or home path would go unnoticed, and "we did not look" is not
+# an answer a hygiene gate gets to give.
+#
 # Exit 0 when clean, 1 on any match.
 
 set -euo pipefail
@@ -48,11 +53,11 @@ report() {
     fi
 }
 
-mechanism_hits="$(git grep -nIE "$MECHANISM_PATTERN" -- . "$SELF" "$PROSE" || true)"
+mechanism_hits="$(git grep -n --text -E "$MECHANISM_PATTERN" -- . "$SELF" "$PROSE" || true)"
 report 'forbidden mechanism (private API loading or process reaping) in executable files' \
     "$mechanism_hits"
 
-leak_hits="$(git grep -nIE "$LEAK_PATTERN" -- . "$SELF" || true)"
+leak_hits="$(git grep -n --text -E "$LEAK_PATTERN" -- . "$SELF" || true)"
 report 'leaked absolute home path or simulator UDID' "$leak_hits"
 
 if [ "$failures" -ne 0 ]; then
