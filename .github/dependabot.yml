@@ -1,0 +1,9 @@
+# Keeps the workflow actions current. They are pinned to commit SHAs, which is what makes a
+# supply-chain compromise of an action tag a non-event here - and also what makes them
+# invisible to a human reading the diff, so the bump is automated rather than remembered.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
