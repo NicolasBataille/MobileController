@@ -13,14 +13,18 @@ let package = Package(
     ],
     targets: [
         .target(name: "SimProbeCore"),
-        .executableTarget(
-            name: "simprobe",
+        // The CLI lives in a library target rather than in the executable: a test target
+        // cannot reliably `@testable import` an executable target, and every verb here is
+        // meant to be exercised with injected fakes. `simprobe` is a three-line shim.
+        .target(
+            name: "SimProbeCLI",
             dependencies: [
                 "SimProbeCore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
+        .executableTarget(name: "simprobe", dependencies: ["SimProbeCLI"]),
         .testTarget(name: "SimProbeCoreTests", dependencies: ["SimProbeCore"]),
-        .testTarget(name: "SimProbeCLITests", dependencies: ["SimProbeCore"]),
+        .testTarget(name: "SimProbeCLITests", dependencies: ["SimProbeCLI"]),
     ]
 )
