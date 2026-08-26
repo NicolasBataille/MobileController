@@ -8,7 +8,7 @@ public struct SimProbe: ParsableCommand {
         commandName: "simprobe",
         abstract: "Answer 'is the screen settled?' about an iOS Simulator, in numbers not pixels.",
         version: SimProbeCore.version,
-        subcommands: [WaitStableCommand.self]
+        subcommands: [WaitStableCommand.self, MotionCommand.self]
     )
 
     public init() {}
