@@ -149,7 +149,7 @@ functions < 50; no `pkill` anywhere; no personal path, UDID, or private bundle i
   `testLiveDevicesListsAtLeastOneBootedDevice`.
 - **Also verify agent-device `--udid <udid>` targeting** (PRD R5); record the result in
   `skill/references/pitfalls.md`, or document the name + snapshot-assertion fallback if it
-  fails. Use `open`/`close`/`daemon stop` only — never `pkill`.
+  fails. Use `open`/`close`/`daemon stop [--clean]` only — never `pkill`.
 - DoD: green locally with a booted simulator; skipped and green in CI.
 
 ---
@@ -164,19 +164,23 @@ functions < 50; no `pkill` anywhere; no personal path, UDID, or private bundle i
   `agent-device help <command>` at 0.20.10; no personal path or bundle id.
 
 ### T3.2 — `references/agent-device-cheatsheet.md`  _(deps: T3.1)_
-- `open --launch-args` (repeatable), `snapshot [-i] [--level digest|default|full] [--diff]`,
+- `open --launch-args` (repeatable), `snapshot [-i] [--diff]`,
   `press/fill/longpress/scroll/back --settle`, `wait <ms>|text|@ref|<selector>|stable`,
   `is`/`get`/`find`, `screenshot --pixel-density/--scale/--overlay-refs`, `diff snapshot`,
-  `session list`, `close`, `daemon stop`, `--cost`, `--json`, `AGENT_DEVICE_SESSION`,
+  `session list`, `close`, `daemon stop [--clean]`, `--cost`, `--json`, `--level
+  digest|default|full` (global flag), `AGENT_DEVICE_SESSION`,
   `AGENT_DEVICE_SCREENSHOT_SCALE`, `AGENT_DEVICE_SESSION_LOCK` (marked unverified).
 - DoD: every line traceable to `agent-device help` output; nothing invented.
 
 ### T3.3 — `references/pitfalls.md`  _(deps: T3.1)_
-- REAPER GUARD (three surviving processes, what `pkill` costs, recovery = reboot the sim),
-  the `close` lease leak and reopen recipe, the cwd-hash implicit session, `--device` names vs
-  `--udid`, AZERTY (`fill` yes / HID `type` no / Cmd+HID('a') = Cmd+Q), the field-clear recipe
-  (read value length via `get`, send that many deletes), `batch` excluding `press`/`fill`,
-  `fill @ref ""` rejected, degradation under host load (`main thread execution timed out`).
+- REAPER GUARD (three surviving processes, time-bounded by the ~5 min runner idle-stop
+  default, what `pkill` costs, recovery = reboot the sim, `daemon stop --clean` as the
+  sanctioned reclaim), the `close` lease leak and reopen recipe, the cwd-hash implicit
+  session, `--device` names vs `--udid`, AZERTY (`fill` yes / HID `type` no — the sim-use
+  0.13.0 Cmd+HID('a') = Cmd+Q incident, not agent-device), the field-clear recipe (app clear
+  button, or `press @<delete-key> --count N` on the keyboard AX element, unverified e2e /
+  locale-dependent label), `batch` excluding `press`/`fill`, `fill @ref ""` rejected,
+  degradation under host load (`main thread execution timed out`).
 - DoD: each entry states the observed symptom, the cause, and the workaround, in that order.
 
 ### T3.4 — `references/simprobe.md` + skill install docs  _(deps: T3.1, T2.6)_
@@ -197,8 +201,8 @@ functions < 50; no `pkill` anywhere; no personal path, UDID, or private bundle i
   `test_est_tokens_is_bytes_over_four`,
   `test_loadavg_column_is_numeric`,
   `test_control_probe_records_milliseconds`.
-- DoD: runnable with a stubbed command; teardown path contains `close` + `daemon stop` and a
-  comment forbidding `pkill`.
+- DoD: runnable with a stubbed command; teardown path contains `close` + `daemon stop --clean`
+  and a comment forbidding `pkill`.
 
 ### T4.2 — Settings flow + `run.sh`  _(deps: T4.1)_
 - `bench/flows/settings-observe-act.sh`: open `com.apple.Preferences`, digest snapshot, press a
