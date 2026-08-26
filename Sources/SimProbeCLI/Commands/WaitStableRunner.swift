@@ -79,7 +79,11 @@ public struct WaitStableRunner {
             startedAtMs: startedAtMs
         )
         while true {
-            let image = try environment.capture.capture(udid: options.udid)
+            let image = try environment.capture.capture(
+                udid: options.udid,
+                deadlineMs: ProcessDeadline.forCapture(
+                    remainingMs: options.timeoutMs - (environment.clock.nowMs - startedAtMs))
+            )
             let frame = try Frames.thumbnail(of: image)
             evaluator = try Frames.observe(evaluator, frame, atMs: environment.clock.nowMs)
             if let verdict = evaluator.verdict {

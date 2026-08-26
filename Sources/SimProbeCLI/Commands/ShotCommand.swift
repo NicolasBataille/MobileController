@@ -29,7 +29,7 @@ struct ShotCommand: ParsableCommand {
     @Option(help: "Output width in pixels. Defaults to the device's logical point width (1x).")
     var width: Int?
 
-    @Option(help: "JPEG quality, 0-100.")
+    @Option(help: "JPEG quality, 1-100.")
     var quality: Int = ShotOptions.defaultQuality
 
     @Option(help: "Framebuffer pixels per point. Read from the simulator when omitted.")

@@ -29,6 +29,49 @@ public protocol DeviceListing {
 extension SimulatorDevice {
     /// `name (udid)`, the form every disambiguation message uses.
     public var summary: String { "\(name) (\(udid))" }
+
+    /// The version numbers in `runtime`: `iOS 26.5` reads as `[26, 5]`.
+    ///
+    /// Empty when the label carries no number, which happens only for a runtime identifier
+    /// that did not fit the expected shape and was passed through untouched.
+    public var runtimeVersion: [Int] {
+        runtime.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
+    }
+}
+
+/// The one place device order is decided, so the list a verb prints and the list it resolves
+/// against cannot disagree.
+public enum DeviceOrder {
+
+    /// Newest runtime first, then by name.
+    ///
+    /// `simctl` returns an unordered dictionary of runtimes, so an explicit order is the only
+    /// way the output is reproducible. The runtime is compared as a version *number*: as
+    /// strings `"iOS 9.0" > "iOS 26.5"`, which silently inverted "newest first" on any machine
+    /// still carrying a single-digit runtime.
+    public static func byNewestRuntimeThenName(
+        _ lhs: SimulatorDevice,
+        _ rhs: SimulatorDevice
+    ) -> Bool {
+        let (left, right) = (lhs.runtimeVersion, rhs.runtimeVersion)
+        if left != right { return isDescending(left, right) }
+        // Same numbers: order by the label, so two families that share a version still have a
+        // total order, and only then by name.
+        return lhs.runtime == rhs.runtime ? lhs.name < rhs.name : lhs.runtime > rhs.runtime
+    }
+
+    /// Booted first, then `byNewestRuntimeThenName`: the booted device is the one a caller
+    /// almost always wants, and it is what the pinning recipe reads the first entry of.
+    public static func bootedFirst(_ lhs: SimulatorDevice, _ rhs: SimulatorDevice) -> Bool {
+        lhs.isBooted == rhs.isBooted
+            ? byNewestRuntimeThenName(lhs, rhs)
+            : lhs.isBooted
+    }
+
+    private static func isDescending(_ lhs: [Int], _ rhs: [Int]) -> Bool {
+        for (left, right) in zip(lhs, rhs) where left != right { return left > right }
+        return lhs.count > rhs.count
+    }
 }
 
 /// Lists simulators through `xcrun simctl list devices --json`.
@@ -66,16 +109,7 @@ public struct SimctlDeviceLister: DeviceListing {
         return payload.devices.flatMap { runtime, entries in
             entries.map { $0.device(runtime: Self.runtimeLabel(runtime)) }
         }
-        .sorted(by: Self.byNewestRuntimeThenName)
-    }
-
-    /// Newest runtime first, then by name. `simctl` returns an unordered dictionary of
-    /// runtimes, so an explicit order is the only way the output is reproducible.
-    private static func byNewestRuntimeThenName(
-        _ lhs: SimulatorDevice,
-        _ rhs: SimulatorDevice
-    ) -> Bool {
-        lhs.runtime == rhs.runtime ? lhs.name < rhs.name : lhs.runtime > rhs.runtime
+        .sorted(by: DeviceOrder.byNewestRuntimeThenName)
     }
 
     /// `com.apple.CoreSimulator.SimRuntime.iOS-26-5` reads as `iOS 26.5`.

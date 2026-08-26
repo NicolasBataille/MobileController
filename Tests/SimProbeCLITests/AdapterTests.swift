@@ -13,7 +13,9 @@ private final class PNGWritingRunner: ProcessRunning {
 
     init(image: CGImage) { self.image = image }
 
-    func run(_ executable: String, _ arguments: [String]) throws -> ProcessResult {
+    func run(_ executable: String, _ arguments: [String], deadlineMs: Int) throws
+        -> ProcessResult
+    {
         guard let path = arguments.last else {
             return ProcessResult(status: 1, standardOutput: Data(), standardError: "no path")
         }
@@ -128,6 +130,44 @@ final class AdapterTests: XCTestCase {
         let frame = try Frames.thumbnail(of: image)
         let mean = frame.pixels.reduce(0) { $0 + Int($1) } / frame.pixels.count
         XCTAssertGreaterThan(mean, 40, "the capture decoded as black after its file was removed")
+    }
+
+    /// A child that never exits must not hang the CLI forever.
+    ///
+    /// `waitUntilExit()` has no deadline, so a wedged `simctl` used to pin the process
+    /// indefinitely - and `wait-stable --timeout` could not bound its own wall time.
+    func testProcessRunnerKillsChildAfterDeadline() throws {
+        // A marker unique to this child, so the liveness check below cannot match some other
+        // `sleep` on the machine.
+        let marker = "simprobe-deadline-\(UUID().uuidString)"
+        let startedAt = Date()
+
+        XCTAssertThrowsError(
+            try SystemProcessRunner().run(
+                "/bin/sh", ["-c", "sleep 30 # \(marker)"], deadlineMs: 200)
+        ) { error in
+            XCTAssertEqual((error as? ProbeError)?.exitCode, 2)
+            XCTAssertTrue("\(error)".contains("timed out"), "\(error)")
+        }
+
+        XCTAssertLessThan(Date().timeIntervalSince(startedAt), 2, "the deadline did not fire")
+        XCTAssertFalse(isRunning(marker), "the child outlived the run that spawned it")
+    }
+
+    func testSystemProcessRunnerHandlesStdoutLargerThanPipeBuffer() throws {
+        // 200 KB is comfortably past the 64 KB pipe buffer that a Pipe-based runner deadlocks
+        // on: `simctl list devices --json` crosses it on any real machine.
+        let result = try SystemProcessRunner().run(
+            "/bin/sh", ["-c", "yes x | head -c 200000"])
+
+        XCTAssertEqual(result.status, 0)
+        XCTAssertEqual(result.standardOutput.count, 200_000)
+    }
+
+    /// True while any process still carries `marker` in its command line.
+    private func isRunning(_ marker: String) -> Bool {
+        let found = try? SystemProcessRunner().run("/usr/bin/pgrep", ["-f", marker])
+        return found?.status == 0
     }
 
     func testSystemProcessRunnerCapturesBothStreams() throws {

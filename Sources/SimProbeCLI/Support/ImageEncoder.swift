@@ -39,15 +39,26 @@ enum ImageEncoder {
 
 extension ImageEncoder {
 
-    /// - Parameter quality: 0-100, as the `--quality` flag states it.
+    /// The range `--quality` accepts. Zero is excluded: it is not a quality, it is a request
+    /// for an unreadable image.
+    static let qualityRange = 1...100
+
+    /// - Parameter quality: 1-100, as the `--quality` flag states it.
+    /// - Throws: `ProbeError.invalidArgument` (exit 1) outside that range. Clamping instead
+    ///   would write a q1 or q100 file while the summary line reported the number that was
+    ///   asked for, so the output would misdescribe the file it just wrote.
     static func writeJPEG(_ image: CGImage, to url: URL, quality: Int) throws {
-        let clamped = min(max(quality, 0), 100)
+        guard qualityRange.contains(quality) else {
+            throw ProbeError.invalidArgument(
+                "--quality must be 1-100, got \(quality)"
+            )
+        }
         try write(
             image,
             to: url,
             type: UTType.jpeg,
             properties: [
-                kCGImageDestinationLossyCompressionQuality: Double(clamped) / 100
+                kCGImageDestinationLossyCompressionQuality: Double(quality) / 100
             ] as CFDictionary
         )
     }

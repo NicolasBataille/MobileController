@@ -60,25 +60,42 @@ public struct MotionRunner {
     private func sample(in environment: ProbeEnvironment, writingTo directory: URL?) throws
         -> [TimelineSample]
     {
-        var previous = try Frames.thumbnail(of: environment.capture.capture(udid: options.udid))
+        var previous = try Frames.thumbnail(
+            of: environment.capture.capture(
+                udid: options.udid,
+                deadlineMs: ProcessDeadline.forCapture(remainingMs: options.durationMs)
+            )
+        )
         let startedAtMs = environment.clock.nowMs
         var samples: [TimelineSample] = []
         while true {
-            let image = try environment.capture.capture(udid: options.udid)
+            let image = try environment.capture.capture(
+                udid: options.udid,
+                deadlineMs: ProcessDeadline.forCapture(
+                    remainingMs: options.durationMs - (environment.clock.nowMs - startedAtMs))
+            )
             let elapsedMs = environment.clock.nowMs - startedAtMs
             let frame = try Frames.thumbnail(of: image)
             samples.append(
                 TimelineSample(tMs: elapsedMs, diff: try Frames.difference(previous, frame))
             )
             if let directory {
-                try ImageEncoder.writePNG(
-                    image,
-                    to: directory.appendingPathComponent("frame-\(elapsedMs)ms.png")
-                )
+                let name = Self.frameName(samples.count - 1, elapsedMs)
+                try ImageEncoder.writePNG(image, to: directory.appendingPathComponent(name))
             }
             previous = frame
             if elapsedMs >= options.durationMs { return samples }
         }
+    }
+
+    /// `frame-000-205ms.png`: the sample index leads, zero-padded, and the timestamp follows.
+    ///
+    /// The index is what makes the name unique. Two captures can complete in the same
+    /// millisecond on an idle host, and a name built from the timestamp alone silently
+    /// overwrites the earlier frame - the one case where `--keep-frames` is asked for
+    /// precisely because something moved fast.
+    static func frameName(_ index: Int, _ elapsedMs: Int) -> String {
+        String(format: "frame-%03d-%dms.png", index, elapsedMs)
     }
 
     private func prepareFrameDirectory() throws -> URL? {
