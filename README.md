@@ -1,5 +1,7 @@
 # MobileController
 
+[![CI](https://github.com/NicolasBataille/MobileController/actions/workflows/ci.yml/badge.svg)](https://github.com/NicolasBataille/MobileController/actions/workflows/ci.yml) [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+
 **Status: v0.1.0 (alpha).** The `simprobe` CLI, the Claude Code skill, the benchmark
 harness and the DemoApp are all in place and measured on a real simulator. Expect rough
 edges; the pinned tool versions below are the only combination tested so far.
