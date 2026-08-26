@@ -47,11 +47,42 @@ swift build -c release
 # the binary lands in .build/release/simprobe
 ```
 
+Add `.build/release` to your `PATH`, or call the binary by its full path.
+
 The automation engine is installed separately and is not vendored here:
 
 ```sh
-npm i -g agent-device@0.20.10
+npm i -g agent-device@0.20.10          # or run it ad hoc: npx agent-device@0.20.10 <command>
 ```
+
+## Install the skill
+
+`skill/` is a Claude Code skill: `SKILL.md` plus three on-demand reference files. Copy the whole
+directory — the references are loaded by relative path, so a copy of `SKILL.md` alone is broken.
+
+```sh
+# available in every project, for this user
+mkdir -p ~/.claude/skills
+cp -r skill ~/.claude/skills/mobilecontroller
+```
+
+For one project only, put it under that project's `.claude/skills/` instead:
+
+```sh
+mkdir -p /path/to/your-app/.claude/skills
+cp -r skill /path/to/your-app/.claude/skills/mobilecontroller
+```
+
+A symlink works too (`ln -s "$PWD/skill" ~/.claude/skills/mobilecontroller`) and keeps the skill
+in step with this checkout. Either way the agent needs `simprobe` and `agent-device` on its
+`PATH`; the skill invokes both by bare name.
+
+| File | Loaded | Contents |
+|---|---|---|
+| `skill/SKILL.md` | always | Escalation ladder, action rule, session hygiene, five hard don'ts |
+| `skill/references/agent-device-cheatsheet.md` | on demand | Every verb and flag at 0.20.10, measured costs |
+| `skill/references/pitfalls.md` | on demand | Symptom → cause → workaround, incl. the reaper guard |
+| `skill/references/simprobe.md` | on demand | The five verbs, exit codes, `--json` shapes |
 
 ## Using `simprobe`
 
