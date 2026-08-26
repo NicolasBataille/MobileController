@@ -27,6 +27,11 @@ jobs:
       - name: Test with coverage
         run: swift test --enable-code-coverage
 
+      # The profile from the step above, filtered to this repository's own sources: the
+      # ArgumentParser checkout it also carries would otherwise decide the number.
+      - name: Coverage floor
+        run: ./scripts/coverage-check.sh
+
       - name: Lint formatting
         run: swift format lint --strict --recursive Sources Tests
 
