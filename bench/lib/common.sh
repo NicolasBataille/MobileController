@@ -102,18 +102,32 @@ bench_csv_append_row() {
   printf '%s\n' "$line" >> "$csv"
 }
 
+# --- dry run ----------------------------------------------------------------
+
+# bench_is_dry_run - true when BENCH_DRY_RUN=1: record every step's tag and
+# command line without executing it and without touching a simulator, so CI can
+# exercise the flows on a machine with no device, no agent-device and no Xcode.
+# Timing columns are 0 in that mode - deliberately not fabricated.
+bench_is_dry_run() {
+  [ "${BENCH_DRY_RUN:-0}" = "1" ]
+}
+
 # --- control probe ----------------------------------------------------------
 
 # bench_control_probe <udid> - milliseconds for one `simctl io ... screenshot`.
 #
-# This is the independent yardstick: simctl talks to the same simulator over a
-# path that does not involve agent-device, so a row where wall_ms and
-# control_probe_ms rose together is host load, not a regression. Always prints
-# an integer and always returns 0, so callers running under `set -e` can do
-# `ms=$(bench_control_probe "$udid")` without a guard; failures warn on stderr.
+# The independent yardstick: simctl reaches the same simulator over a path that
+# does not involve agent-device, so a row where wall_ms and control_probe_ms
+# rose together is host load, not a regression. Always prints an integer and
+# always returns 0, so a caller under `set -e` needs no guard; failures warn.
 bench_control_probe() {
   local udid="${1:-}"
   local dir shot start end
+
+  if bench_is_dry_run; then
+    printf '0\n'
+    return 0
+  fi
 
   if [ -z "$udid" ]; then
     echo "bench: no UDID given, control probe skipped (recorded as 0 ms)" >&2
@@ -174,9 +188,17 @@ bench_run_step() {
   probe_ms=$(bench_control_probe "${BENCH_UDID:-}")
 
   local start end rc
-  start=$(bench_now_ms)
-  if "$@" > "$stdout_file" 2> "$stderr_file"; then rc=0; else rc=$?; fi
-  end=$(bench_now_ms)
+  if bench_is_dry_run; then
+    : > "$stdout_file"
+    : > "$stderr_file"
+    start=0
+    end=0
+    rc=0
+  else
+    start=$(bench_now_ms)
+    if "$@" > "$stdout_file" 2> "$stderr_file"; then rc=0; else rc=$?; fi
+    end=$(bench_now_ms)
+  fi
 
   local bytes est load
   bytes=$(bench_byte_count "$stdout_file")
