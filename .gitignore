@@ -2,9 +2,13 @@
 .build/
 .swiftpm/
 *.xcodeproj
+DemoApp/*.xcodeproj
 node_modules/
 .DS_Store
 *.png
 *.jpg
+*.jpeg
 *.mp4
 .local/
+bench/out/
+bench/local.env
