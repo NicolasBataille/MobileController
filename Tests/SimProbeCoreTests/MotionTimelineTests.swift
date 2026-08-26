@@ -118,7 +118,7 @@ final class MotionTimelineTests: XCTestCase {
         let single = MotionTimeline(samples: [TimelineSample(tMs: 0, diff: 11.0)])
 
         XCTAssertEqual(single.fps, 0, accuracy: 1e-9)
-        XCTAssertEqual(single.formatted(), "t=0 11.00  ->  not settled (1 samples, 0.0 fps)")
+        XCTAssertEqual(single.formatted(), "t=0 11.00  ->  not settled (1 sample, 0.0 fps)")
     }
 
     func testEmptyTimelineFormatsExplicitly() {
