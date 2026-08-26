@@ -79,6 +79,10 @@ dense production SwiftUI screen (60 nodes, 43 interactive). Bytes → tokens est
 | Reference tool, default outline | 2,380 | ~595 | 5–12 s |
 | Reference tool, full-res PNG | 2,352,036 | **4,216 vision** | ~2–3 s |
 
+The 1x vision-token cost is a property of the screen, not a constant: ~470-510 vision tokens
+depending on screen (402x874 -> 468, 420x912 -> 510) vs ~4,200 at 3x. The 468 above is the
+measured figure for one 402x874 device; a budget stated as a single number is wrong on the next.
+
 | Action | Latency |
 |---|---:|
 | `press <id>` bare | ~1,530 ms |

@@ -21,7 +21,7 @@ Start at the cheapest rung. Step up **only** when the rung below cannot answer t
 | 1 | `agent-device snapshot -i --level digest --json` | ~510 B (~128 tok) | Default. Ref + label of every interactive element. |
 | 2 | `agent-device snapshot -i` | ~1.3 KB (~325 tok) | The digest has no ref matching your target. |
 | 3 | `agent-device snapshot` | ~2.3 KB (~570 tok) | Structure questions: nesting, containers, non-interactive text. |
-| 4 | `simprobe shot --out /tmp/s.jpg` | ~468 vision tokens | Rendering questions the tree cannot answer (layout, colour, overlap). |
+| 4 | `simprobe shot --out /tmp/s.jpg` | ~470-510 vision tokens | Rendering questions the tree cannot answer (layout, colour, overlap). |
 
 `--level` is a **global** flag, not a `snapshot` flag. `-i` = interactive nodes only.
 
@@ -62,16 +62,21 @@ forwarded verbatim. Do not shell out to `simctl launch` for this.
 Pass `--udid <udid> --session <name>` on **every** call. With no `--session`, the name is a
 **cwd hash**, so an implicit session and `--session default` coexist and disagree. `--device`
 matches names **only** and local simulators routinely share a name — resolve with
-`simprobe devices --json` and pin by UDID.
+`simprobe devices --platform ios --json` and pin by UDID.
 
 ```bash
-UDID=$(simprobe devices --booted --json | python3 -c 'import json,sys;print(json.load(sys.stdin)[0]["udid"])')
+UDID=$(simprobe devices --booted --platform ios --json | python3 -c 'import json,sys;print(json.load(sys.stdin)[0]["udid"])')
 AD="agent-device --platform ios --udid $UDID --session mc"
 $AD open com.example.app                # cold 12-33 s, load-dependent
 $AD close                               # reports success, but LEAKS the device lease
 $AD open com.example.app                # next plain open would fail DEVICE_IN_USE...
                                         # ...reopening under the SAME --session works
 ```
+
+`--platform ios` is not optional in that recipe: without it the first booted entry can be an
+Apple Watch, and every action afterwards lands on the wrong device. With **several** iOS
+simulators booted the first entry is merely the newest runtime — assert the target by snapshot
+content (or pass the UDID explicitly) before acting on it.
 
 **Teardown, in order:** `agent-device close` → `agent-device daemon stop --clean` (the sanctioned
 reclaim of retained runner processes and leases). Add `close --shutdown` to stop the simulator.
@@ -85,8 +90,10 @@ reclaim of retained runner processes and leases). Add `close --shutdown` to stop
    Use `daemon stop --clean`.
 2. **Never run agent-device as an MCP server.** Tool schemas cost 3k-66k tokens on every
    sampling; the CLI costs zero standing tokens.
-3. **Never take a full-resolution screenshot.** The raw 3x framebuffer is ~4,200 vision tokens;
-   `simprobe shot` at 1x logical points is ~468, and its coordinates map 1:1 onto AX frames.
+3. **Never take a full-resolution screenshot.** `simprobe shot` at 1x logical points costs
+   ~470-510 vision tokens depending on screen (402x874 -> 468, 420x912 -> 510) vs ~4,200 at 3x;
+   its coordinates map 1:1 onto AX frames. The exact number is a property of the screen, not a
+   constant: read it off the summary line the verb prints.
 4. **Never trust a snapshot taken mid-animation.** The AX tree is silently *truncated* while
    animating — 1-20 nodes instead of the settled 42, returned fast and wrong. Settle first
    (`--settle`, or `simprobe wait-stable`), then snapshot.
@@ -106,7 +113,7 @@ $AD snapshot -i --level digest --json                             # fresh refs a
 $AD fill @e57 "user@example.com" --settle                         # layout-independent; diff is the proof
 $AD get attrs @e57                                                # ~294 B: read the value back
 simprobe wait-stable --udid "$UDID" --timeout 8s                  # pixel truth before asserting
-simprobe shot --udid "$UDID" --out /tmp/s.jpg                     # ~468 vision tokens, only if needed
+simprobe shot --udid "$UDID" --out /tmp/s.jpg                     # ~470-510 vision tokens, only if needed
 $AD close
 agent-device daemon stop --clean                                  # sanctioned reclaim. NEVER pkill.
 ```
