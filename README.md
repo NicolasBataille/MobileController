@@ -83,21 +83,21 @@ Captures thumbnails until three consecutive comparisons fall within `--tol`.
 
 ```
 $ simprobe wait-stable --udid <id>
-stable after 4212ms (3 polls, last diff 0.00, tol 0.50)
+stable after 1629ms (3 polls, last diff 0.00, tol 0.50)
 
-$ simprobe wait-stable --udid <id> --timeout 1s
-not stable after 1367ms (1 poll, last diff 0.00, tol 0.50)
+$ simprobe wait-stable --udid <id> --timeout 1s      # taken during an app launch
+not stable after 1017ms (1 poll, last diff 65.51, tol 0.50)
 $ echo $?
 3
 
 $ simprobe wait-stable --udid <id> --json
-{"elapsedMs":2741,"lastDiff":0,"polls":3,"stable":true,"tol":0.5,"udid":"XXXXXXXX-…"}
+{"elapsedMs":1527,"lastDiff":0,"polls":3,"stable":true,"tol":0.5,"udid":"XXXXXXXX-…"}
 ```
 
-One `simctl` screenshot costs roughly 0.2-1.1 s depending on host load, and a verdict needs
-four captures, so a settled screen is reported in seconds rather than in the 400 ms the PRD
-hoped for. The default `--timeout 4s` is tight enough on a loaded machine that a static screen
-can be reported as not stable; raise it rather than lowering `--tol`.
+One `simctl` screenshot costs 0.2-1.1 s depending on host load, and a verdict needs four
+captures, so a settled screen is reported in 1.5-4 s rather than in the 400 ms the PRD hoped
+for. On a loaded machine the default `--timeout 4s` is tight enough that a static screen can be
+reported as not stable; raise the timeout rather than lowering `--tol`.
 
 ### `motion <ms> [--udid <id>] [--tol 0.5] [--keep-frames <dir>] [--json]`
 
@@ -105,12 +105,18 @@ A diff timeline with **zero image bytes on stdout**. The first capture is a base
 window starts once there is something to compare against, and every timestamp is measured.
 
 ```
-$ simprobe motion 1500 --udid <id>
-t=1074 0.00, 2653 0.00  ->  settled@1074ms (2 samples, 0.6 fps)
+$ simprobe motion 2500 --udid <id>          # an app launched ~400 ms in
+t=286 0.00, 605 55.66, 838 48.27, 1073 0.01, 1315 0.00, 1553 0.00, 1936 0.00,
+   2258 0.27, 2508 0.00  ->  settled@286ms (9 samples, 3.6 fps)
 
-$ simprobe motion 1500 --udid <id> --json
-{"fps":0.6,"samples":[{"diff":0,"tMs":1074},{"diff":0,"tMs":2653}],"settledAtMs":1074,"tol":0.5}
+$ simprobe motion 1500 --udid <id> --json   # a screen that never moved
+{"fps":2.7,"samples":[{"diff":0,"tMs":279},{"diff":0,"tMs":685},{"diff":0,"tMs":1096},
+ {"diff":0,"tMs":1439},{"diff":0,"tMs":1776}],"settledAtMs":279,"tol":0.5}
 ```
+
+`settledAtMs` is the **first** sample within tolerance, so on a screen that was already quiet
+when the window opened it reports that first quiet sample rather than the end of the animation
+that followed. Read the timeline, not just the settle point.
 
 `--keep-frames <dir>` is the only path that writes images: one PNG per sample.
 
@@ -121,8 +127,8 @@ accessibility frame. The framebuffer scale is read from `simctl io <udid> enumer
 (`Preferred UI Scale` on the integrated screen), not hardcoded; `--scale` overrides it.
 
 ```
-$ simprobe shot --udid <id> --out /tmp/s.jpg
-/tmp/s.jpg  402x874 @1x  jpeg q70  6.5 KB  ~468 vision tokens  (source 1206x2622, 3.0x)
+$ simprobe shot --udid <id> --out /tmp/settings.jpg
+/tmp/settings.jpg  402x874 @1x  jpeg q70  47.4 KB  ~468 vision tokens  (source 1206x2622, 3.0x)
 ```
 
 ### `devices [--booted] [--json]`
@@ -141,8 +147,13 @@ BOOTED  iPhone 17          iOS 26.5   XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
 ### `diff <before> <after> [--tol 0.5] [--json]`
 
 ```
-$ simprobe diff base.png now.png
-diff 0.03  (40x87 gray, tol 0.50)  ->  same
+$ simprobe diff /tmp/home.jpg /tmp/home.jpg
+diff 0.00  (40x87 gray, tol 0.50)  ->  same
+
+$ simprobe diff /tmp/settings.jpg /tmp/home.jpg
+diff 64.36  (40x87 gray, tol 0.50)  ->  different
+$ echo $?
+4
 ```
 
 ### Exit codes
