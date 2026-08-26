@@ -1,0 +1,10 @@
+.osgrep/
+.build/
+.swiftpm/
+*.xcodeproj
+node_modules/
+.DS_Store
+*.png
+*.jpg
+*.mp4
+.local/
