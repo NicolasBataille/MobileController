@@ -14,8 +14,9 @@ All notable changes to this project are documented here. The format follows
   `idb connect` because the first call after a simulator boots fails by design.
 - Two exit-2 error kinds: `dependencyMissing` (carrying the install line) and `idbFailed`.
 - `Formula/simprobe.rb`: a Homebrew formula living in this repository rather than in a separate
-  tap — `brew tap NicolasBataille/MobileController <url> && brew install simprobe`. Builds from
-  the release tarball with `swift build -c release --disable-sandbox`.
+  tap — `brew tap NicolasBataille/MobileController <url>`, `brew trust
+  nicolasbataille/mobilecontroller`, `brew install simprobe`. Builds from the release tarball
+  with `swift build -c release --disable-sandbox`. Verified end to end on Homebrew 6.0.19.
 - `scripts/bump-formula.sh <tag>`: rewrites the formula's url and sha256 from the real tarball,
   so a release cannot silently ship the previous binary.
 

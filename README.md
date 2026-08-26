@@ -46,12 +46,19 @@ Requires macOS 14+ and a Swift 6.0+ toolchain.
 
 ```sh
 brew tap NicolasBataille/MobileController https://github.com/NicolasBataille/MobileController
+brew trust nicolasbataille/mobilecontroller
 brew install simprobe
 ```
 
-The tap URL is not optional: the repository is not named `homebrew-simprobe`, and without an
-explicit URL `brew tap` looks for one that does not exist. The formula builds from the release
-tarball, which takes about 90 s.
+Neither of the first two lines is optional. The tap URL is not, because the repository is not
+named `homebrew-simprobe` and without an explicit URL `brew tap` looks for one that does not
+exist. The `brew trust` line is not, because Homebrew 6 refuses to load a formula from a
+third-party tap until you say so: without it `brew install` stops with *"Refusing to load
+formula … from untrusted tap"* and prints the command to run. Read `Formula/simprobe.rb`
+before you trust it — it is forty lines and it builds from the tagged source tarball.
+
+The formula builds the release tarball from source (`swift build -c release`), which takes
+30-90 s depending on the machine. There is no bottle.
 
 From source instead:
 

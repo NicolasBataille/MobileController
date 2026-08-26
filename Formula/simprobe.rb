@@ -3,7 +3,8 @@
 #
 # `brew tap NicolasBataille/MobileController <url>` accepts a repository whose name does not
 # start with `homebrew-` as long as the URL is given explicitly, and finds this file because
-# Homebrew looks in `Formula/` before the repository root.
+# Homebrew looks in `Formula/` before the repository root. Homebrew 6 then wants an explicit
+# `brew trust nicolasbataille/mobilecontroller` before it will load anything from here.
 #
 # Bump with `scripts/bump-formula.sh <tag>` on every release: the URL and the checksum both
 # move, and a formula pinned to an old tag installs an old binary without saying so.
