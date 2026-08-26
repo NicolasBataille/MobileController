@@ -1,6 +1,7 @@
 # simprobe — the pixel probe
 
-Five verbs, no session, no daemon, no private APIs: `xcrun simctl` + CoreGraphics only. Each has a
+Six verbs, no session, no daemon, no private APIs. Five of them need nothing but `xcrun simctl` +
+CoreGraphics; `frames` additionally shells out to `idb`, which is installed separately. Each has a
 compact default line, a `--json` form (one line, sorted keys, byte-stable), and an exit code a shell can
 branch on. `--udid` takes a UDID **or** a device name, defaulting to the single booted simulator.
 
@@ -78,6 +79,50 @@ $ simprobe shot --udid <udid> --out /tmp/s.jpg --json
 {"bytes":48537,"estimatedVisionTokens":468,"height":874,"path":"/tmp/s.jpg","quality":70,"scale":3,"sourceHeight":2622,"sourceWidth":1206,"udid":"<udid>","width":402}
 ```
 
+## `frames [--udid <id>] [--interactive] [--point x,y] [--json]`
+
+**The coordinates an accessibility snapshot does not give you.** `agent-device snapshot` names elements
+and says what they are, but never says *where* they are; `shot` shows where things are but not what they
+are called. `frames` prints both, in the same 1x logical points `shot` writes its image in — so a frame
+printed here and a pixel read off that image are the same coordinate, and `idb ui tap <x> <y>` lands on it.
+
+One line per element, banded by vertical position. An element is named `#accessibilityIdentifier` when
+the app set one, because that survives a relayout, and `@<index>` otherwise — the index is its position
+in what idb returned, so `--interactive` and `--point` never renumber it. Zero-size and offscreen
+elements are dropped, labels are cut at 40 **characters** (`こんばんは` is five), and the type is the same
+short vocabulary the snapshot uses: `Button`, `Text`, `TextField`, `Image`, `Switch`, `Other`.
+
+```
+$ simprobe frames --udid <id>          # Settings, 17 elements, 1,815 B (~454 tokens), ~8 s
+Réglages  402x874
+[Top y<120]
+  @2                                         Other      ""                                          (0,0 402x874)
+[Content]
+  @1                                         Text       "Réglages"                                  (16,120 147x41)
+  #com.apple.settings.general                Button     "Général"                                   (16,311 370x52)
+[Bottom y≥754]
+  @14                                        TextField  "Recherche"                                 (33,803 336x38)
+```
+
+`--interactive` keeps only what can be acted on — buttons, fields and switches, and only while they are
+enabled (1,307 B on the same screen). `--point x,y` describes the single element under a point, with no
+header and no band:
+
+```
+$ simprobe frames --udid <id> --point 201,389
+  #com.apple.settings.accessibility  Button  "Accessibilité"  (16,363 370x52)
+$ simprobe frames --udid <id> --json
+[{"h":874,"label":"","ref":"@2","type":"Other","w":402,"x":0,"y":0}, …]
+```
+
+**Needs `idb`** — `brew install facebook/fb/idb-companion && pip3 install fb-idb`. Without it the verb
+exits **2** with that line as the message (`kind: dependencyMissing`), never a stack trace. The companion
+auto-spawns, but the first call after a simulator boots fails with *"No translation object returned for
+simulator"*; `frames` retries once through an explicit `idb connect <udid>`, which is why a cold first
+run costs a few seconds more than the ~1.5 s a warm one does. A screen still animating gives a truncated
+tree here exactly as it does through agent-device — settle first.
+
+
 ## `devices [--booted] [--platform ios|watchos|tvos|visionos|all] [--json]`
 
 The pinning agent-device lacks (`--device` matches names only). Booted first, then newest runtime,
@@ -112,7 +157,7 @@ $ simprobe diff base.png other.png --json
 |---:|---|
 | 0 | Success — and for `diff`, "same within tolerance" |
 | 1 | Usage or invalid arguments (unknown flag, unknown verb, `--width` over the source width) |
-| 2 | Environment: `simctl` missing or failing, no booted simulator, ambiguous or unknown `--udid` |
+| 2 | Environment: `simctl` or `idb` missing or failing, no booted simulator, ambiguous or unknown `--udid` |
 | 3 | `wait-stable` timed out before the screen settled |
 | 4 | `diff` exceeded `--tol` |
 | 5 | Capture or decode failure (unreadable image, frame size mismatch) |
@@ -122,4 +167,4 @@ $ simprobe diff base.png other.png --json
 empty; with `--json` the envelope `{"error":{"code":5,"kind":"imageUnreadable","message":"…"}}` goes to
 **stdout**, so a caller parsing stdout never scrapes stderr. `kind` is a stable discriminator:
 `invalidArgument`, `simctlUnavailable`, `simctlFailed`, `noBootedDevice`, `ambiguousDevice`,
-`deviceNotFound`, `captureFailed`, `frameFailure`, `imageUnreadable`.
+`deviceNotFound`, `captureFailed`, `frameFailure`, `imageUnreadable`, `dependencyMissing`, `idbFailed`.

@@ -6,7 +6,7 @@
 /// | Code | Meaning |
 /// |---:|---|
 /// | 1 | Usage / invalid arguments |
-/// | 2 | Environment: `simctl` missing or failing, no booted simulator, ambiguous UDID |
+/// | 2 | Environment: `simctl` or `idb` missing or failing, no booted simulator, ambiguous UDID |
 /// | 5 | Capture or decode failure |
 ///
 /// Codes 3 (`wait-stable` timed out) and 4 (`diff` exceeded tolerance) are deliberately absent:
@@ -41,13 +41,21 @@ public enum ProbeError: Error, Equatable, Sendable {
     /// A file the user named is not a decodable image.
     case imageUnreadable(String)
 
+    /// An external tool a verb needs is not installed. Carries the command that installs it,
+    /// because "install idb" without the incantation is a search the caller should not have
+    /// to run.
+    case dependencyMissing(tool: String, hint: String)
+
+    /// `idb` ran and reported a failure, or answered with something unparseable.
+    case idbFailed(command: String, detail: String)
+
     /// The process exit status this error produces.
     public var exitCode: Int32 {
         switch self {
         case .invalidArgument:
             return 1
         case .simctlUnavailable, .simctlFailed, .noBootedDevice, .ambiguousDevice,
-            .deviceNotFound:
+            .deviceNotFound, .dependencyMissing, .idbFailed:
             return 2
         case .captureFailed, .frameFailure, .imageUnreadable:
             return 5
@@ -66,6 +74,8 @@ public enum ProbeError: Error, Equatable, Sendable {
         case .captureFailed: return "captureFailed"
         case .frameFailure: return "frameFailure"
         case .imageUnreadable: return "imageUnreadable"
+        case .dependencyMissing: return "dependencyMissing"
+        case .idbFailed: return "idbFailed"
         }
     }
 }
@@ -93,6 +103,10 @@ extension ProbeError: CustomStringConvertible {
             return "frame error: \(detail)"
         case .imageUnreadable(let path):
             return "could not read an image at \(path)"
+        case .dependencyMissing(let tool, let hint):
+            return "\(tool) is not installed; install it with: \(hint)"
+        case .idbFailed(let command, let detail):
+            return "idb \(command) failed: \(detail)"
         }
     }
 }

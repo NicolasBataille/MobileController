@@ -12,6 +12,7 @@ public struct SimProbe: ParsableCommand {
             WaitStableCommand.self,
             MotionCommand.self,
             ShotCommand.self,
+            FramesCommand.self,
             DevicesCommand.self,
             DiffCommand.self,
         ]

@@ -10,7 +10,9 @@ If any of those drifts, re-run `bench/run.sh` before trusting a number below.
 
 Two binaries, both driven from **Bash**. Never as an MCP server.
 - `agent-device` — accessibility tree, actions, sessions.
-- `simprobe` — pixel-level "is it settled?", screenshots at 1x, UDID lookup. No session needed.
+- `simprobe` — pixel-level "is it settled?", screenshots at 1x, element coordinates, UDID lookup.
+  No session needed. `simprobe frames` additionally needs `idb`
+  (`brew install facebook/fb/idb-companion && pip3 install fb-idb`); every other verb does not.
 
 ## 1. Observation escalation ladder
 
@@ -21,14 +23,16 @@ Start at the cheapest rung. Step up **only** when the rung below cannot answer t
 | 1 | `agent-device snapshot -i --level digest --json` | ~510 B (~128 tok) | Default. Ref + label of every interactive element. |
 | 2 | `agent-device snapshot -i` | ~1.3 KB (~325 tok) | The digest has no ref matching your target. |
 | 3 | `agent-device snapshot` | ~2.3 KB (~570 tok) | Structure questions: nesting, containers, non-interactive text. |
-| 4 | `simprobe shot --out /tmp/s.jpg` | ~470-510 vision tokens | Rendering questions the tree cannot answer (layout, colour, overlap). |
+| 4 | `simprobe frames --interactive` | ~1.3 KB (~330 tok), 1.5-9 s | **Where** something is. The snapshot has no coordinates at any rung; this is the only rung that gives refs *and* 1x frames. |
+| 5 | `simprobe shot --out /tmp/s.jpg` | ~470-510 vision tokens | Rendering questions neither tree nor frame can answer (colour, overlap, actual drawing). |
 
 `--level` is a **global** flag, not a `snapshot` flag. `-i` = interactive nodes only.
 
 **Re-observation short-circuit.** Already seen this screen this session? Use
 `agent-device snapshot --diff` (or `agent-device diff snapshot`) — it emits only what changed.
 `press … --settle` already returns that diff for free, so continue from it instead of
-re-snapshotting. One field's value: `agent-device get attrs @<ref>` (~294 B).
+re-snapshotting. One field's value: `agent-device get attrs @<ref>` (~294 B). One element under a coordinate:
+`simprobe frames --point x,y` (~76 B).
 
 Refs expire on any device action. Re-observe, then act. Copy refs verbatim, `~sN` pin included.
 
@@ -124,5 +128,5 @@ agent-device daemon stop --clean                                  # sanctioned r
   environment variables.
 - `references/pitfalls.md` — eleven symptom → cause → workaround entries: REAPER GUARD, the lease
   leak, cwd-hash sessions, AZERTY, field clearing, stale refs, host-load failures.
-- `references/simprobe.md` — the five simprobe verbs, exit codes, `--json` shapes, and how to read
-  a motion timeline.
+- `references/simprobe.md` — the six simprobe verbs, exit codes, `--json` shapes, how to read a motion
+  timeline, and the `frames` banding/ref format.

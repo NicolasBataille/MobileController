@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
+## [Unreleased]
+
+### Added
+- `simprobe frames`: the on-screen accessibility elements with their **1x coordinates** — the
+  thing an agent-device snapshot never reports. Banded by vertical position, one line per
+  element, `#accessibilityIdentifier` or `@index` as the ref, labels cut at 40 characters,
+  `--interactive`, `--point x,y` and `--json`. Reads frames through `idb`
+  (`brew install facebook/fb/idb-companion && pip3 install fb-idb`), retrying once through
+  `idb connect` because the first call after a simulator boots fails by design.
+- Two exit-2 error kinds: `dependencyMissing` (carrying the install line) and `idbFailed`.
+
 ## [0.1.0] — 2026-08-26
 
 First public alpha, measured on Xcode 26.6 / iOS 26.5 with agent-device 0.20.10.

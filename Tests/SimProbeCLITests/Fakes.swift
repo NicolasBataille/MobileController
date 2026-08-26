@@ -124,3 +124,60 @@ final class RecordingOutput: OutputWriting {
     var out: String { outLines.joined(separator: "\n") }
     var errorText: String { errorLines.joined(separator: "\n") }
 }
+
+/// Hands back one canned result per call, so a retry path can be asserted as a *sequence*.
+///
+/// `StubProcessRunner` returns the same result forever, which cannot distinguish "succeeded
+/// first time" from "failed, reconnected, then succeeded".
+final class ScriptedProcessRunner: ProcessRunning {
+
+    private let results: [ProcessResult]
+    private(set) var invocations: [(executable: String, arguments: [String], deadlineMs: Int)] =
+        []
+
+    init(results: [ProcessResult]) { self.results = results }
+
+    /// The verb of each call — `describe-all`, `connect` — which is what the retry order is
+    /// about; the surrounding flags and the UDID are asserted separately.
+    var verbs: [String] { invocations.map { $0.arguments.joined(separator: " ") } }
+
+    func run(_ executable: String, _ arguments: [String], deadlineMs: Int) throws
+        -> ProcessResult
+    {
+        invocations.append((executable, arguments, deadlineMs))
+        guard invocations.count <= results.count else {
+            throw ProbeError.idbFailed(
+                command: arguments.joined(separator: " "),
+                detail: "scripted runner exhausted after \(results.count) calls"
+            )
+        }
+        return results[invocations.count - 1]
+    }
+}
+
+extension ProcessResult {
+
+    static func ok(_ text: String) -> ProcessResult {
+        ProcessResult(status: 0, standardOutput: Data(text.utf8), standardError: "")
+    }
+
+    static func failed(_ detail: String, status: Int32 = 1) -> ProcessResult {
+        ProcessResult(status: status, standardOutput: Data(), standardError: detail)
+    }
+}
+
+/// Returns a canned snapshot without touching `idb`.
+struct StubElementDescriber: ElementDescribing {
+
+    let snapshot: ElementSnapshot
+    let hit: AccessibilityElement?
+
+    init(_ snapshot: ElementSnapshot, hit: AccessibilityElement? = nil) {
+        self.snapshot = snapshot
+        self.hit = hit
+    }
+
+    func describeAll(udid: String) throws -> ElementSnapshot { snapshot }
+
+    func element(atX x: Int, y: Int, udid: String) throws -> AccessibilityElement? { hit }
+}

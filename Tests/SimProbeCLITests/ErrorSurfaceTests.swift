@@ -20,6 +20,8 @@ final class ErrorSurfaceTests: XCTestCase {
         (.captureFailed("screenshot refused"), 5),
         (.frameFailure("size mismatch"), 5),
         (.imageUnreadable("/nowhere/x.png"), 5),
+        (.dependencyMissing(tool: "idb", hint: Idb.installHint), 2),
+        (.idbFailed(command: "ui describe-all", detail: "no companion"), 2),
     ]
 
     func testEveryProbeErrorMapsToDocumentedExitCode() {

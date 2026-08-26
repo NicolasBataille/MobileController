@@ -58,6 +58,16 @@ The automation engine is installed separately and is not vendored here:
 npm i -g agent-device@0.20.10          # or run it ad hoc: npx agent-device@0.20.10 <command>
 ```
 
+`simprobe frames` is the one verb with an extra dependency — it reads accessibility frames
+through `idb` rather than through a private framework:
+
+```sh
+brew install facebook/fb/idb-companion && pip3 install fb-idb
+```
+
+Every other verb needs only `xcrun simctl`, and `frames` exits 2 with that install line as its
+message when `idb` is absent.
+
 ## Install the skill
 
 `skill/` is a Claude Code skill: `SKILL.md` plus three on-demand reference files. Copy the whole
@@ -171,6 +181,28 @@ $ simprobe shot --udid <id> --out /tmp/settings.jpg
 /tmp/settings.jpg  402x874 @1x  jpeg q70  47.4 KB  ~468 vision tokens  (source 1206x2622, 3.0x)
 ```
 
+### `frames [--udid <id>] [--interactive] [--point x,y] [--json]`
+
+The coordinates an accessibility snapshot does not give you: every on-screen element with its
+frame in the same 1x logical points `shot` writes its image in. Needs `idb` (see Install).
+
+```
+$ simprobe frames --udid <id> --interactive
+Réglages  402x874
+[Content]
+  #com.apple.settings.general    Button  "Général"        (16,311 370x52)
+  #com.apple.settings.camera     Button  "Appareil photo" (16,415 370x52)
+[Bottom y≥754]
+  @14                            TextField  "Recherche"   (33,803 336x38)
+
+$ simprobe frames --udid <id> --point 201,389
+  #com.apple.settings.accessibility  Button  "Accessibilité"  (16,363 370x52)
+```
+
+Elements are named `#accessibilityIdentifier` when the app set one and `@<index>` otherwise;
+zero-size and offscreen elements are dropped and labels are cut at 40 characters. `--json`
+emits one object per element: `{"ref","type","label","x","y","w","h"}`.
+
 ### `devices [--booted] [--json]`
 
 The pinning `agent-device` lacks: its `--device` matches names only, and duplicate names are
@@ -202,7 +234,7 @@ $ echo $?
 |---:|---|
 | 0 | Success, and for `diff` "same within tolerance" |
 | 1 | Usage or invalid arguments |
-| 2 | Environment: `simctl` missing or failing, no booted simulator, ambiguous `--udid` |
+| 2 | Environment: `simctl` or `idb` missing or failing, no booted simulator, ambiguous `--udid` |
 | 3 | `wait-stable` timed out before the screen settled |
 | 4 | `diff` exceeded tolerance |
 | 5 | Capture or decode failure |

@@ -84,7 +84,52 @@ final class LiveSmokeTests: XCTestCase {
         XCTAssertTrue(output.outLines.last?.hasSuffix(" booted") == true, output.out)
     }
 
+    /// `frames` against whatever is on screen.
+    ///
+    /// The only exercise the idb plumbing ever gets: the companion, the connect-and-retry
+    /// path, and the real JSON shape, none of which a fixture can prove still hold. What is
+    /// asserted is the property the verb exists for — that the frames are in the same logical
+    /// points `shot` writes its image in, and not in framebuffer pixels.
+    func testLiveFramesReportsPointSizedFrames() throws {
+        let context = try liveContext()
+        let idb = try idbPath()
+        let scale = try context.session.displayMetrics.scale(udid: context.udid)
+        let captured = try SimctlScreenCapture(simctl: context.simctl).capture(udid: context.udid)
+
+        let snapshot = try IdbElementDescriber(idb: idb).describeAll(udid: context.udid)
+
+        XCTAssertFalse(snapshot.elements.isEmpty, "nothing on screen has an accessibility frame")
+        XCTAssertEqual(snapshot.screen.width, Int((Double(captured.width) / scale).rounded()))
+        XCTAssertTrue(
+            snapshot.elements.contains {
+                !$0.frame.isEmpty && $0.frame.intersects(snapshot.screen)
+            },
+            "no element of the \(snapshot.elements.count) reported is on screen"
+        )
+    }
+
+    func testLiveFramesPrintsABandedListWithASizedHeader() throws {
+        let context = try liveContext()
+        let idb = try idbPath()
+        let output = RecordingOutput()
+
+        let code = try FramesRunner(options: FramesOptions(udid: context.udid))
+            .run(describing: IdbElementDescriber(idb: idb), to: output)
+
+        XCTAssertEqual(code, 0)
+        XCTAssertTrue(output.outLines.first?.contains("x") == true, output.out)
+        XCTAssertTrue(output.outLines.contains { $0.hasPrefix("[") }, output.out)
+        XCTAssertTrue(output.outLines.contains { $0.hasPrefix("  ") }, output.out)
+    }
+
     // MARK: Harness
+
+    private func idbPath() throws -> String {
+        guard let idb = try? Idb.locate() else {
+            throw XCTSkip("idb is not installed: \(Idb.installHint)")
+        }
+        return idb
+    }
 
     /// The `~468 vision tokens` figure out of a `shot` summary line.
     private func reportedVisionTokens(in line: String) throws -> Int {
