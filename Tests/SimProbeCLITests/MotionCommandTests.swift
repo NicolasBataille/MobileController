@@ -39,7 +39,12 @@ final class MotionCommandTests: XCTestCase {
         let result = try runMotion(keepFrames: directory)
 
         let written = try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted()
-        XCTAssertEqual(written, ["frame-205ms.png", "frame-410ms.png", "frame-615ms.png"])
+        // The sample index leads, zero-padded: two captures can land in the same millisecond
+        // on a fast host, and a name built from the timestamp alone would then lose a frame.
+        XCTAssertEqual(
+            written,
+            ["frame-000-205ms.png", "frame-001-410ms.png", "frame-002-615ms.png"]
+        )
         XCTAssertEqual(result.code, 0)
     }
 

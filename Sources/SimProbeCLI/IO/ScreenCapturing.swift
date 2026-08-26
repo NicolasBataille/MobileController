@@ -7,7 +7,19 @@ import ImageIO
 /// The only image-producing dependency in the CLI, so faking it is what lets every verb be
 /// tested against a scripted frame sequence with no simulator involved.
 public protocol ScreenCapturing {
-    func capture(udid: String) throws -> CGImage
+
+    /// - Parameter deadlineMs: wall-clock budget for the capture. A poll loop passes what is
+    ///   left of its own timeout, so a wedged `simctl` cannot outlive the verb that called it.
+    func capture(udid: String, deadlineMs: Int) throws -> CGImage
+}
+
+extension ScreenCapturing {
+
+    /// Captures with `ProcessDeadline.defaultMs`, for one-shot callers with no budget of
+    /// their own.
+    public func capture(udid: String) throws -> CGImage {
+        try capture(udid: udid, deadlineMs: ProcessDeadline.defaultMs)
+    }
 }
 
 /// Captures through `xcrun simctl io <udid> screenshot <file>`.
@@ -25,10 +37,14 @@ public struct SimctlScreenCapture: ScreenCapturing {
         self.runner = runner
     }
 
-    public func capture(udid: String) throws -> CGImage {
+    public func capture(udid: String, deadlineMs: Int) throws -> CGImage {
         try TemporaryDirectory.withOne { directory in
             let file = directory.appendingPathComponent("frame.png")
-            let result = try runner.run(simctl, ["io", udid, "screenshot", file.path])
+            let result = try runner.run(
+                simctl,
+                ["io", udid, "screenshot", file.path],
+                deadlineMs: deadlineMs
+            )
             guard result.status == 0 else {
                 throw ProbeError.captureFailed(
                     "simctl io \(udid) screenshot: \(result.failureDetail)"

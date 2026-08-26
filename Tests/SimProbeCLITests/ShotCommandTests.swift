@@ -59,6 +59,22 @@ final class ShotCommandTests: XCTestCase {
         XCTAssertEqual(runner.invocations.first?.arguments, ["io", Fixtures.udid, "enumerate"])
     }
 
+    /// A quality outside 1...100 is a usage error, not something to silently clamp.
+    ///
+    /// Clamping answers `--quality 0` with a q1 JPEG and `--quality 1000` with a q100 one,
+    /// both reported as the number that was asked for, so the summary line lies about what
+    /// was written.
+    func testRejectsQualityOutsideOneToOneHundred() throws {
+        for quality in [0, -5, 101] {
+            XCTAssertThrowsError(try runShot(quality: quality), "\(quality)") { error in
+                XCTAssertEqual((error as? ProbeError)?.exitCode, 1, "\(quality)")
+                XCTAssertTrue("\(error)".contains("1-100"), "\(error)")
+            }
+        }
+        XCTAssertEqual(try runShot(quality: 1).code, 0)
+        XCTAssertEqual(try runShot(quality: 100).code, 0)
+    }
+
     func testRejectsEnumerateOutputWithoutAnIntegratedScreen() {
         let runner = StubProcessRunner(standardOutput: "Port:\n    Class: Unknown\n")
         let metrics = SimctlDisplayMetrics(simctl: "/usr/bin/true", runner: runner)

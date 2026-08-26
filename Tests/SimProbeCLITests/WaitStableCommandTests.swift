@@ -150,11 +150,51 @@ final class WaitStableCommandTests: XCTestCase {
     }
 
     func testRejectsUnparseableDuration() {
-        for text in ["", "soon", "-3s", "4m"] {
+        for text in ["", "soon", "-3s", "4m", "nan", "inf"] {
             XCTAssertThrowsError(try Milliseconds.parse(text), text) { error in
                 XCTAssertEqual((error as? ProbeError)?.exitCode, 1)
             }
         }
+    }
+
+    /// A duration far outside the representable range must be a usage error, not a crash.
+    ///
+    /// `Int(someHugeDouble)` traps rather than throwing, so `--timeout 1e300` used to take the
+    /// process down with SIGILL (exit 133) instead of printing a message and exiting 1.
+    func testRejectsOutOfRangeDuration() {
+        for text in ["1e300", "1e300s", "9e18ms", "-1", "-0.5s"] {
+            XCTAssertThrowsError(try Milliseconds.parse(text), text) { error in
+                XCTAssertEqual((error as? ProbeError)?.exitCode, 1, text)
+            }
+        }
+        // The ceiling itself is accepted: a day is already far beyond any real budget.
+        XCTAssertEqual(try Milliseconds.parse("\(Milliseconds.maximum)"), Milliseconds.maximum)
+    }
+
+    /// `--timeout` must bound total wall time even when a capture never returns.
+    ///
+    /// Each capture is handed the remaining budget as its deadline, so a wedged `simctl` is
+    /// killed rather than waited on forever. The bound is the timeout plus one capture floor:
+    /// a legitimately slow capture (0.2-1.1 s) must never be killed just because the budget is
+    /// nearly spent.
+    func testWaitStableTimeoutBoundsHangingCapture() throws {
+        let clock = VirtualClock()
+        let capture = HangingCapture(advancing: clock)
+        let options = WaitStableOptions(udid: Fixtures.udid, timeoutMs: 800)
+
+        XCTAssertThrowsError(
+            try WaitStableRunner(options: options).run(
+                in: ProbeEnvironment(capture: capture, clock: clock, output: RecordingOutput())
+            )
+        ) { error in
+            XCTAssertEqual((error as? ProbeError)?.exitCode, 2)
+            XCTAssertTrue("\(error)".contains("timed out"), "\(error)")
+        }
+
+        let bound = options.timeoutMs + ProcessDeadline.minimumCaptureMs
+        XCTAssertEqual(capture.deadlines.count, 1)
+        XCTAssertLessThanOrEqual(capture.deadlines[0], bound)
+        XCTAssertLessThanOrEqual(clock.nowMs, bound)
     }
 
     private func alternatingFrames(count: Int) throws -> [CGImage] {

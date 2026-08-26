@@ -3,10 +3,19 @@ import Foundation
 /// What `devices` was asked to do.
 public struct DevicesOptions: Equatable, Sendable {
     public let bootedOnly: Bool
+
+    /// Which simulator family to keep. `.all` by default: narrowing is opt-in.
+    public let platform: DevicePlatform
+
     public let json: Bool
 
-    public init(bootedOnly: Bool = false, json: Bool = false) {
+    public init(
+        bootedOnly: Bool = false,
+        platform: DevicePlatform = .all,
+        json: Bool = false
+    ) {
         self.bootedOnly = bootedOnly
+        self.platform = platform
         self.json = json
     }
 }
@@ -21,21 +30,16 @@ public struct DevicesRunner {
     }
 
     public func run(listing: any DeviceListing, to output: any OutputWriting) throws -> Int32 {
-        let all = try listing.devices()
-        let shown = (options.bootedOnly ? all.filter(\.isBooted) : all).sorted(by: Self.ordering)
+        let shown = try listing.devices()
+            .filter { !options.bootedOnly || $0.isBooted }
+            .filter { options.platform.matches(runtime: $0.runtime) }
+            .sorted(by: DeviceOrder.bootedFirst)
         if options.json {
             output.writeLine(try JSONLine.encode(shown.map(Report.init)))
         } else {
             table(for: shown, bootedCount: shown.filter(\.isBooted).count).forEach(output.writeLine)
         }
         return 0
-    }
-
-    /// Booted first, then by name: the booted device is the one a caller almost always wants.
-    private static func ordering(_ lhs: SimulatorDevice, _ rhs: SimulatorDevice) -> Bool {
-        (lhs.isBooted ? 0 : 1, lhs.name, lhs.runtime) < (
-            rhs.isBooted ? 0 : 1, rhs.name, rhs.runtime
-        )
     }
 
     private func table(for devices: [SimulatorDevice], bootedCount: Int) -> [String] {

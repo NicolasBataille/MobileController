@@ -25,7 +25,7 @@ final class ScriptedCapture: ScreenCapturing {
         self.costMs = costMs
     }
 
-    func capture(udid: String) throws -> CGImage {
+    func capture(udid: String, deadlineMs: Int) throws -> CGImage {
         requestedUdids.append(udid)
         if let failure { throw failure }
         clock?.sleep(ms: costMs)
@@ -34,6 +34,27 @@ final class ScriptedCapture: ScreenCapturing {
         }
         defer { captureCount += 1 }
         return frames[captureCount]
+    }
+}
+
+/// Models a `simctl` that has wedged: it consumes the whole deadline it was handed, then fails
+/// the way `SystemProcessRunner` does once it has killed the child.
+final class HangingCapture: ScreenCapturing {
+
+    private let clock: VirtualClock
+
+    /// The deadline each capture was given, which is what bounds the caller's wall time.
+    private(set) var deadlines: [Int] = []
+
+    init(advancing clock: VirtualClock) { self.clock = clock }
+
+    func capture(udid: String, deadlineMs: Int) throws -> CGImage {
+        deadlines.append(deadlineMs)
+        clock.sleep(ms: deadlineMs)
+        throw ProbeError.simctlFailed(
+            command: "io \(udid) screenshot",
+            detail: "timed out after \(deadlineMs)ms"
+        )
     }
 }
 
@@ -68,7 +89,8 @@ struct StubDeviceLister: DeviceListing {
 final class StubProcessRunner: ProcessRunning {
 
     private let result: ProcessResult
-    private(set) var invocations: [(executable: String, arguments: [String])] = []
+    private(set) var invocations: [(executable: String, arguments: [String], deadlineMs: Int)] =
+        []
 
     init(result: ProcessResult) { self.result = result }
 
@@ -82,8 +104,10 @@ final class StubProcessRunner: ProcessRunning {
         )
     }
 
-    func run(_ executable: String, _ arguments: [String]) throws -> ProcessResult {
-        invocations.append((executable, arguments))
+    func run(_ executable: String, _ arguments: [String], deadlineMs: Int) throws
+        -> ProcessResult
+    {
+        invocations.append((executable, arguments, deadlineMs))
         return result
     }
 }
