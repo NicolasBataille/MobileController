@@ -30,9 +30,30 @@ public struct MotionTimeline: Equatable, Sendable {
         self.tolerance = tolerance
     }
 
-    /// Timestamp of the first sample that fell within tolerance, or `nil` if none did.
+    /// Whether any sample exceeded tolerance, i.e. whether the screen moved at all.
+    ///
+    /// A caller reading `settledAtMs` alone cannot tell "moved, then stopped at t" from
+    /// "never moved, so it was already settled at t"; this flag makes that distinction
+    /// without a second capture.
+    public var hadMotion: Bool {
+        samples.contains { $0.diff > tolerance }
+    }
+
+    /// Timestamp of the moment motion ended: the first sample within tolerance that comes
+    /// *after* the last sample exceeding it. `nil` when the timeline ends still moving.
+    ///
+    /// Not the first quiet sample overall: a window that opens before the transition starts
+    /// (a tap that takes 300 ms to produce anything) begins with quiet samples, and reporting
+    /// one of those would date the settle point before the animation it is supposed to
+    /// measure. A timeline with no motion at all settles at its first sample - see
+    /// `hadMotion` to tell the two cases apart.
     public var settledAtMs: Int? {
-        samples.first { $0.diff <= tolerance }?.tMs
+        guard let lastMotion = samples.lastIndex(where: { $0.diff > tolerance }) else {
+            return samples.first?.tMs
+        }
+        let firstQuiet = samples.index(after: lastMotion)
+        guard firstQuiet < samples.endIndex else { return nil }
+        return samples[firstQuiet].tMs
     }
 
     /// Measured sampling rate, derived from the first and last actual timestamps.
@@ -56,13 +77,15 @@ public struct MotionTimeline: Equatable, Sendable {
         let body = parts.joined(separator: ", ")
         let outcome = settledAtMs.map { "settled@\($0)ms" } ?? "not settled"
         let summary = String(format: "(%d samples, %.1f fps)", samples.count, fps)
-        return "t=\(body)  ->  \(outcome) \(summary)"
+        let motion = hadMotion ? "" : " (no motion)"
+        return "t=\(body)  ->  \(outcome) \(summary)\(motion)"
     }
 
     /// The machine-readable form, with keys sorted so the output is byte-stable.
     ///
     /// `settledAtMs` is always present, `null` when the screen never settled, so a caller
-    /// parsing the JSON never has to distinguish "absent" from "did not settle".
+    /// parsing the JSON never has to distinguish "absent" from "did not settle". `hadMotion`
+    /// tells a settled timeline that moved from one that never did.
     public func jsonEncoded() throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -71,12 +94,14 @@ public struct MotionTimeline: Equatable, Sendable {
 
     private struct Payload: Encodable {
         let settledAtMs: Int?
+        let hadMotion: Bool
         let samples: [TimelineSample]
         let tol: Double
         let fps: Double
 
         init(timeline: MotionTimeline) {
             settledAtMs = timeline.settledAtMs
+            hadMotion = timeline.hadMotion
             samples = timeline.samples
             tol = timeline.tolerance
             fps = (timeline.fps * 10).rounded() / 10
@@ -86,13 +111,14 @@ public struct MotionTimeline: Equatable, Sendable {
             var container = encoder.container(keyedBy: CodingKeys.self)
             // encode, not encodeIfPresent: the key must survive a nil settle point.
             try container.encode(settledAtMs, forKey: .settledAtMs)
+            try container.encode(hadMotion, forKey: .hadMotion)
             try container.encode(samples, forKey: .samples)
             try container.encode(tol, forKey: .tol)
             try container.encode(fps, forKey: .fps)
         }
 
         enum CodingKeys: String, CodingKey {
-            case settledAtMs, samples, tol, fps
+            case settledAtMs, hadMotion, samples, tol, fps
         }
     }
 }
