@@ -327,17 +327,17 @@ The design is written down before the code, in three documents:
 ## Known upstream limitations (agent-device 0.20.10)
 
 Observed while building and benchmarking this project. The skill's `references/pitfalls.md`
-carries the workaround for each; they are candidates for upstream issues on
-[callstack/agent-device](https://github.com/callstack/agent-device).
+carries the workaround for each; reported upstream on
+[callstack/agent-device](https://github.com/callstack/agent-device) (2026-08-26).
 
-1. `close` reports success but does not release the device lease, so the next `open`
+1. [#2031 (comment)](https://github.com/callstack/agent-device/issues/2031#issuecomment-5430618009) — `close` reports success but does not release the device lease, so the next `open`
    fails with `DEVICE_IN_USE` unless the same `--session` is reused.
-2. `batch` excludes `press` / `fill` / `click`, so an observe → act → verify sequence
+2. [#2062](https://github.com/callstack/agent-device/issues/2062) — `batch` excludes `press` / `fill` / `click`, so an observe → act → verify sequence
    cannot be amortised into one call.
-3. `fill @ref ""` is rejected with `INVALID_ARGS`; there is no clear-field primitive.
-4. `--device <udid>` fails with `DEVICE_NOT_FOUND` without hinting at `--udid`, which
+3. [#2063](https://github.com/callstack/agent-device/issues/2063) — `fill @ref ""` is rejected with `INVALID_ARGS`; there is no clear-field primitive.
+4. [#2064](https://github.com/callstack/agent-device/issues/2064) — `--device <udid>` fails with `DEVICE_NOT_FOUND` without hinting at `--udid`, which
    exists but is missing from the global-flags help.
-5. The implicit cwd-hash session name coexists with an explicit `--session`, so two
+5. [#1394 (comment)](https://github.com/callstack/agent-device/issues/1394#issuecomment-5430618195) — The implicit cwd-hash session name coexists with an explicit `--session`, so two
    shells in different directories silently drive two sessions on one device.
 
 ## Credits
