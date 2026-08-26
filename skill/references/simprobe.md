@@ -64,9 +64,12 @@ first/last timestamps; a `simctl` screenshot costs ~200 ms, capping the real cad
 ## `shot [--udid <id>] [--out shot.jpg] [--width <px>] [--quality 70] [--scale <n>] [--json]`
 
 One JPEG at **1x logical points**, so a coordinate read off the image maps 1:1 onto the accessibility
-frame, at about a ninth of the raw 3x framebuffer's vision tokens. Scale is read from `simctl io <udid>
+frame, at about a ninth of the raw 3x framebuffer's vision tokens: ~470-510 vision tokens depending
+on screen (402x874 -> 468, 420x912 -> 510) vs ~4,200 at 3x. The cost is a property of the screen,
+not a constant - the summary line reports the one that applies. Scale is read from `simctl io <udid>
 enumerate` (`Preferred UI Scale`), not hardcoded; `--scale` skips that call. A `--width` above the
-source pixel width is rejected (exit 1). Bytes vary with content; the token estimate does not.
+source pixel width is rejected (exit 1), and so is a `--quality` outside 1-100. Bytes vary with
+content; the token estimate does not.
 
 ```
 $ simprobe shot --udid <udid> --out /tmp/s.jpg
@@ -75,9 +78,11 @@ $ simprobe shot --udid <udid> --out /tmp/s.jpg --json
 {"bytes":48537,"estimatedVisionTokens":468,"height":874,"path":"/tmp/s.jpg","quality":70,"scale":3,"sourceHeight":2622,"sourceWidth":1206,"udid":"<udid>","width":402}
 ```
 
-## `devices [--booted] [--json]`
+## `devices [--booted] [--platform ios|watchos|tvos|visionos|all] [--json]`
 
-The pinning agent-device lacks (`--device` matches names only). Booted first, then by name.
+The pinning agent-device lacks (`--device` matches names only). Booted first, then newest runtime,
+then name; runtimes are ordered by version number, so `iOS 26.5` outranks `iOS 9.0`. `--platform`
+defaults to `all`: narrow it to `ios` before reading the first entry, or a booted Apple Watch wins.
 
 ```
 $ simprobe devices
@@ -85,7 +90,7 @@ BOOTED  iPad Pro 13-inch   iOS 26.4   SIM-UDID-PLACEHOLDER-C
         iPhone 17          iOS 26.5   SIM-UDID-PLACEHOLDER-A
         iPhone 17 Pro      iOS 26.5   SIM-UDID-PLACEHOLDER-B
 3 devices, 1 booted
-$ simprobe devices --booted --json
+$ simprobe devices --booted --platform ios --json
 [{"available":true,"booted":true,"name":"iPad Pro 13-inch","runtime":"iOS 26.4","udid":"<udid>"}]
 ```
 

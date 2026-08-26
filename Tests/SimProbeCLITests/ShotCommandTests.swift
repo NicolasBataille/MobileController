@@ -39,7 +39,8 @@ final class ShotCommandTests: XCTestCase {
         XCTAssertTrue(line.contains("402x874 @1x"), line)
         XCTAssertTrue(line.contains("jpeg q70"), line)
         XCTAssertTrue(line.contains(" KB "), line)
-        // 402 * 874 / 750 pixels per vision token, and well inside the 500-token budget.
+        // 468 is this fixture's number and nothing more general: 402 * 874 points over 750
+        // pixels per vision token. A 420x912 screen (iPhone Air) costs 510 the same way.
         XCTAssertTrue(line.contains("~468 vision tokens"), line)
         XCTAssertTrue(line.contains("(source 1206x2622, 3.0x)"), line)
     }
