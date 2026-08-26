@@ -1,3 +1,3 @@
 import SimProbeCLI
 
-SimProbe.main()
+SimProbeMain.run()

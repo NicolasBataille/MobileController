@@ -19,14 +19,10 @@ struct DevicesCommand: ParsableCommand {
     var json = false
 
     func run() throws {
-        let output = StandardOutput()
-        do {
+        try CommandExit.reporting(json: json) { output in
             let lister = SimctlDeviceLister(simctl: try Simctl.locate())
             let options = DevicesOptions(bootedOnly: booted, json: json)
-            try CommandExit.finish(DevicesRunner(options: options).run(listing: lister, to: output))
-        } catch let error as ProbeError {
-            ErrorReporter.report(error, json: json, to: output)
-            throw ExitCode(error.exitCode)
+            return try DevicesRunner(options: options).run(listing: lister, to: output)
         }
     }
 }

@@ -12,11 +12,14 @@ struct WaitStableCommand: ParsableCommand {
             screen was still moving when --timeout elapsed.
 
             Durations accept a bare number of milliseconds, or an ms/s suffix: 250, 60ms, 1.5s.
+
+            --udid accepts a UDID or a device name; omit it and the single booted \
+            simulator is used, or exit 2 lists the candidates when that is ambiguous.
             """
     )
 
-    @Option(help: "UDID of the simulator to watch.")
-    var udid: String
+    @Option(help: "UDID or name of the simulator to watch. Defaults to the booted one.")
+    var udid: String?
 
     @Option(help: "Mean absolute luminance difference below which a screen counts as quiet.")
     var tol: Double = FrameDiff.defaultTolerance
@@ -31,20 +34,17 @@ struct WaitStableCommand: ParsableCommand {
     var json = false
 
     func run() throws {
-        let output = StandardOutput()
-        do {
+        try CommandExit.reporting(json: json) { output in
+            let session = try ProbeSession.live()
             let options = WaitStableOptions(
-                udid: udid,
+                udid: try session.udid(for: udid),
                 tolerance: tol,
                 timeoutMs: try Milliseconds.parse(timeout),
                 intervalMs: try Milliseconds.parse(interval),
                 json: json
             )
-            let environment = ProbeEnvironment.live(simctl: try Simctl.locate(), output: output)
-            try CommandExit.finish(WaitStableRunner(options: options).run(in: environment))
-        } catch let error as ProbeError {
-            ErrorReporter.report(error, json: json, to: output)
-            throw ExitCode(error.exitCode)
+            return try WaitStableRunner(options: options).run(
+                in: session.environment(output: output))
         }
     }
 }
