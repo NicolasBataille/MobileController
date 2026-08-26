@@ -11,7 +11,6 @@ final class ShotCommandTests: XCTestCase {
 
     private let sourceWidth = 1_206
     private let sourceHeight = 2_622
-    private let scale = 3.0
 
     func testDefaultWidthIsLogicalPointWidth() throws {
         let result = try runShot()
@@ -76,6 +75,43 @@ final class ShotCommandTests: XCTestCase {
         XCTAssertEqual(try runShot(quality: 100).code, 0)
     }
 
+    /// A scale outside 0.5...16 is a usage error, not something to compute with.
+    ///
+    /// The pixel maths divides the framebuffer size by the scale, so a tiny positive value
+    /// such as `1e-300` produces a point width no `Int` can hold and the conversion traps -
+    /// the process dies on SIGTRAP (exit 133) with nothing printed. No simulator has ever
+    /// reported a scale outside this range.
+    func testRejectsScaleOutsideSaneRange() throws {
+        for scale in [1e-300, 0.4, 0, -3, 16.5, 1e300] {
+            XCTAssertThrowsError(try runShot(scale: scale), "\(scale)") { error in
+                XCTAssertEqual((error as? ProbeError)?.exitCode, 1, "\(scale)")
+                XCTAssertTrue("\(error)".contains("0.5"), "\(error)")
+            }
+        }
+        // Both bounds are themselves usable. At 0.5 the point size is wider than the
+        // framebuffer, so a target width is needed for the encode to be a downscale.
+        XCTAssertEqual(try runShot(targetWidth: 1_000, scale: 0.5).code, 0)
+        XCTAssertEqual(try runShot(scale: 16).code, 0)
+    }
+
+    /// The same bound applies to a scale that came from `simctl`, not from `--scale`.
+    ///
+    /// It is exit 2 rather than 1 there: nothing the caller typed is wrong, the environment
+    /// described a screen `shot` cannot measure.
+    func testEnumerateScaleOutsideRangeIsAnError() {
+        let runner = StubProcessRunner(
+            standardOutput: EnumerateFixture.iPhoneAtThreeX.replacingOccurrences(
+                of: "Preferred UI Scale: 3",
+                with: "Preferred UI Scale: 1e-300"
+            )
+        )
+        let metrics = SimctlDisplayMetrics(simctl: "/usr/bin/true", runner: runner)
+
+        XCTAssertThrowsError(try metrics.scale(udid: Fixtures.udid)) { error in
+            XCTAssertEqual((error as? ProbeError)?.exitCode, 2, "\(error)")
+        }
+    }
+
     func testRejectsEnumerateOutputWithoutAnIntegratedScreen() {
         let runner = StubProcessRunner(standardOutput: "Port:\n    Class: Unknown\n")
         let metrics = SimctlDisplayMetrics(simctl: "/usr/bin/true", runner: runner)
@@ -96,7 +132,8 @@ final class ShotCommandTests: XCTestCase {
     @discardableResult
     private func runShot(
         quality: Int = 70,
-        targetWidth: Int? = nil
+        targetWidth: Int? = nil,
+        scale: Double = 3.0
     ) throws -> ShotResult {
         let output = RecordingOutput()
         let path = temporaryFile()

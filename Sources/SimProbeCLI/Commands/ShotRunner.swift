@@ -9,6 +9,15 @@ public struct ShotOptions: Equatable, Sendable {
     /// file is a fraction of a PNG of the same frame.
     public static let defaultQuality = 70
 
+    /// The framebuffer scales `shot` will work with.
+    ///
+    /// Real simulators report 1, 2 or 3, and the bound is loose enough to survive whatever
+    /// Apple ships next. It exists because the pixel maths divides by the scale: `--scale
+    /// 1e-300` asks for a point width of 10^303, which no `Int` holds, and the conversion
+    /// traps the process (exit 133) before anything is printed. Rejecting the argument says
+    /// what was wrong instead.
+    public static let scaleRange: ClosedRange<Double> = 0.5...16
+
     public let udid: String
     public let outputPath: URL
 
@@ -67,14 +76,14 @@ public struct ShotRunner {
     }
 
     private func plan(for image: CGImage) throws -> EncodePlan {
-        guard options.scale > 0 else {
-            throw ProbeError.invalidArgument("scale must be positive, got \(options.scale)")
+        guard ShotOptions.scaleRange.contains(options.scale) else {
+            throw ProbeError.invalidArgument(
+                "--scale must be \(ShotOptions.scaleRange.lowerBound)-"
+                    + "\(ShotOptions.scaleRange.upperBound), got \(options.scale)"
+            )
         }
         let pixelSize = FrameSize(width: image.width, height: image.height)
-        let pointSize = FrameSize(
-            width: Int((Double(pixelSize.width) / options.scale).rounded()),
-            height: Int((Double(pixelSize.height) / options.scale).rounded())
-        )
+        let pointSize = try Self.pointSize(of: pixelSize, at: options.scale)
         do {
             return try ScreenshotBudget.plan(
                 sourcePixelSize: pixelSize,
@@ -84,6 +93,24 @@ public struct ShotRunner {
         } catch let error as ScreenshotBudgetError {
             throw ProbeError.invalidArgument(error.description)
         }
+    }
+
+    /// Divides a framebuffer size by the scale, refusing anything an `Int` cannot represent.
+    ///
+    /// `Int(exactly:)` rather than `Int(_:)`: the truncating initialiser traps on an
+    /// out-of-range `Double`, and a trap kills the process with no message. `scaleRange`
+    /// already makes this unreachable; the guard is what keeps it unreachable if the range
+    /// is ever widened.
+    private static func pointSize(of pixelSize: FrameSize, at scale: Double) throws -> FrameSize {
+        guard
+            let width = Int(exactly: (Double(pixelSize.width) / scale).rounded()),
+            let height = Int(exactly: (Double(pixelSize.height) / scale).rounded())
+        else {
+            throw ProbeError.invalidArgument(
+                "\(pixelSize) at \(scale)x has no representable logical point size"
+            )
+        }
+        return FrameSize(width: width, height: height)
     }
 
     private func byteCount() throws -> Int {

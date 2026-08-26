@@ -91,6 +91,10 @@ Five verbs. Every one has a compact human-readable default, a `--json` form, and
 a shell can branch on. `--udid` accepts a UDID or a device name and defaults to the single
 booted simulator, so most invocations need no target at all.
 
+Only `shot --out` and `motion --keep-frames` write anything, and they write wherever you point
+them: the path is taken as given, a symlink is followed to its target, and an existing file is
+overwritten without a prompt.
+
 ```
 $ simprobe --help
 OVERVIEW: Answer 'is the screen settled?' about an iOS Simulator, in numbers not pixels.
@@ -150,7 +154,9 @@ $ simprobe motion 1500 --udid <id> --json   # a screen that never moved
 when the window opened it reports that first quiet sample rather than the end of the animation
 that followed. Read the timeline, not just the settle point.
 
-`--keep-frames <dir>` is the only path that writes images: one PNG per sample.
+`--keep-frames <dir>` is the only path that writes images: one PNG per sample, up to 10 000 of
+them. Past that the frames stop and the run says so (`(frames capped at 10000)`, or
+`"framesCapped": true` under `--json`); the timeline itself always runs to the end of the window.
 
 ### `shot [--udid <id>] [--out shot.jpg] [--width <px>] [--quality 70] [--scale <n>] [--json]`
 

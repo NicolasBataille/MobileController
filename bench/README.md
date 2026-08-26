@@ -142,3 +142,6 @@ Machine-specific values - a UDID, a private bundle id - come from the git-ignore
 `bench/local.env`. Copy `bench/local.env.example` and fill it in. Nothing
 user-specific is committed, and `bench/out/` is ignored too: the bench generates
 every image it needs rather than committing baselines.
+
+This file is sourced by bash (`bench/run.sh`): anything in it runs with your
+privileges. Keep it to KEY=value lines.

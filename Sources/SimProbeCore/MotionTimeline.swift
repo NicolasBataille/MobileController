@@ -25,9 +25,20 @@ public struct MotionTimeline: Equatable, Sendable {
     public let samples: [TimelineSample]
     public let tolerance: Double
 
-    public init(samples: [TimelineSample], tolerance: Double = FrameDiff.defaultTolerance) {
+    /// The frame-writing cap that was hit, or `nil` when none was. Sampling is never capped:
+    /// only the optional PNGs a caller asked to keep are, so a capped timeline still answers
+    /// the question the verb was asked. Reported so a caller does not read a short directory
+    /// as a short run.
+    public let framesCappedAt: Int?
+
+    public init(
+        samples: [TimelineSample],
+        tolerance: Double = FrameDiff.defaultTolerance,
+        framesCappedAt: Int? = nil
+    ) {
         self.samples = samples
         self.tolerance = tolerance
+        self.framesCappedAt = framesCappedAt
     }
 
     /// Whether any sample exceeded tolerance, i.e. whether the screen moved at all.
@@ -79,14 +90,16 @@ public struct MotionTimeline: Equatable, Sendable {
         let noun = samples.count == 1 ? "sample" : "samples"
         let summary = String(format: "(%d \(noun), %.1f fps)", samples.count, fps)
         let motion = hadMotion ? "" : " (no motion)"
-        return "t=\(body)  ->  \(outcome) \(summary)\(motion)"
+        let capped = framesCappedAt.map { " (frames capped at \($0))" } ?? ""
+        return "t=\(body)  ->  \(outcome) \(summary)\(motion)\(capped)"
     }
 
     /// The machine-readable form, with keys sorted so the output is byte-stable.
     ///
     /// `settledAtMs` is always present, `null` when the screen never settled, so a caller
     /// parsing the JSON never has to distinguish "absent" from "did not settle". `hadMotion`
-    /// tells a settled timeline that moved from one that never did.
+    /// tells a settled timeline that moved from one that never did, and `framesCapped` says
+    /// whether `--keep-frames` stopped writing before the run ended.
     public func jsonEncoded() throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -99,6 +112,7 @@ public struct MotionTimeline: Equatable, Sendable {
         let samples: [TimelineSample]
         let tol: Double
         let fps: Double
+        let framesCapped: Bool
 
         init(timeline: MotionTimeline) {
             settledAtMs = timeline.settledAtMs
@@ -106,6 +120,7 @@ public struct MotionTimeline: Equatable, Sendable {
             samples = timeline.samples
             tol = timeline.tolerance
             fps = (timeline.fps * 10).rounded() / 10
+            framesCapped = timeline.framesCappedAt != nil
         }
 
         func encode(to encoder: any Encoder) throws {
@@ -116,10 +131,13 @@ public struct MotionTimeline: Equatable, Sendable {
             try container.encode(samples, forKey: .samples)
             try container.encode(tol, forKey: .tol)
             try container.encode(fps, forKey: .fps)
+            // Always present, like the keys above: a caller must be able to tell "not capped"
+            // from "this build did not know about capping" without inspecting the directory.
+            try container.encode(framesCapped, forKey: .framesCapped)
         }
 
         enum CodingKeys: String, CodingKey {
-            case settledAtMs, hadMotion, samples, tol, fps
+            case settledAtMs, hadMotion, samples, tol, fps, framesCapped
         }
     }
 }
