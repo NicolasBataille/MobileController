@@ -30,6 +30,16 @@ struct HomeView: View {
             }
             .padding(20)
             .navigationTitle("Home")
+            // `.contain` first, then the identifier. On a plain layout container
+            // like this VStack an identifier alone is inherited by every child,
+            // so `home.root` silently overwrote `home.animateButton` and the
+            // others and no selector but `id=home.root` matched anything on this
+            // screen. Making the stack an accessibility container of its own
+            // keeps the identifier on the container and leaves the children
+            // holding the identifiers DemoApp/README.md promises. ItemListView
+            // and FormView do not need this: List and Form are already
+            // containers, which is why only Home was affected.
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier(AXID.homeRoot)
         }
     }
