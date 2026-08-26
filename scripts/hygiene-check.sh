@@ -53,11 +53,11 @@ report() {
     fi
 }
 
-mechanism_hits="$(git grep -n --text -E "$MECHANISM_PATTERN" -- . "$SELF" "$PROSE" || true)"
+mechanism_hits="$(git grep --untracked -n --text -E "$MECHANISM_PATTERN" -- . "$SELF" "$PROSE" || true)"
 report 'forbidden mechanism (private API loading or process reaping) in executable files' \
     "$mechanism_hits"
 
-leak_hits="$(git grep -n --text -E "$LEAK_PATTERN" -- . "$SELF" || true)"
+leak_hits="$(git grep --untracked -n --text -E "$LEAK_PATTERN" -- . "$SELF" || true)"
 report 'leaked absolute home path or simulator UDID' "$leak_hits"
 
 if [ "$failures" -ne 0 ]; then
