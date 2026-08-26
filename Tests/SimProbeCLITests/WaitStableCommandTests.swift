@@ -1,3 +1,4 @@
+import ArgumentParser
 import Foundation
 import SimProbeCore
 import XCTest
@@ -106,6 +107,39 @@ final class WaitStableCommandTests: XCTestCase {
 
         // One baseline plus exactly the three quiet comparisons the verdict needs.
         XCTAssertEqual(capture.captureCount, 4)
+    }
+
+    func testQuietPollsOptionIsRespected() throws {
+        let output = RecordingOutput()
+        let capture = ScriptedCapture(
+            frames: try Array(repeating: TestFrames.thumbnail(base: 60), count: 20)
+        )
+
+        let code = try WaitStableRunner(
+            options: .init(udid: Fixtures.udid, quietPollsRequired: 2)
+        )
+        .run(in: ProbeEnvironment(capture: capture, clock: VirtualClock(), output: output))
+
+        XCTAssertEqual(code, 0)
+        XCTAssertEqual(output.out, "stable after 120ms (2 polls, last diff 0.00, tol 0.50)")
+        // One baseline plus exactly the two quiet comparisons asked for, not the default three.
+        XCTAssertEqual(capture.captureCount, 3)
+
+        let parsed = try WaitStableCommand.parse(["--quiet-polls", "2"])
+        XCTAssertEqual(parsed.quietPolls, 2)
+        XCTAssertEqual(try WaitStableCommand.parse([]).quietPolls, 3)
+
+        // Zero quiet polls would settle before any comparison; usage errors exit 1.
+        XCTAssertEqual(try WaitStableOptions.validatedQuietPolls(1), 1)
+        XCTAssertThrowsError(try WaitStableOptions.validatedQuietPolls(0)) { error in
+            XCTAssertEqual((error as? ProbeError)?.exitCode, 1)
+        }
+    }
+
+    func testDefaultTimeoutIsSixSeconds() throws {
+        XCTAssertEqual(StabilityEvaluator.defaultTimeoutMs, 6_000)
+        XCTAssertEqual(WaitStableOptions(udid: Fixtures.udid).timeoutMs, 6_000)
+        XCTAssertEqual(try WaitStableCommand.parse([]).timeout, "6s")
     }
 
     func testParsesDurationSuffixes() throws {

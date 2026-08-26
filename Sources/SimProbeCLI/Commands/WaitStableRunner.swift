@@ -12,6 +12,7 @@ public struct WaitStableOptions: Equatable, Sendable {
 
     public let udid: String
     public let tolerance: Double
+    public let quietPollsRequired: Int
     public let timeoutMs: Int
     public let intervalMs: Int
     public let json: Bool
@@ -19,15 +20,32 @@ public struct WaitStableOptions: Equatable, Sendable {
     public init(
         udid: String,
         tolerance: Double = FrameDiff.defaultTolerance,
+        quietPollsRequired: Int = StabilityEvaluator.defaultQuietPolls,
         timeoutMs: Int = StabilityEvaluator.defaultTimeoutMs,
         intervalMs: Int = WaitStableOptions.defaultIntervalMs,
         json: Bool = false
     ) {
         self.udid = udid
         self.tolerance = tolerance
+        self.quietPollsRequired = quietPollsRequired
         self.timeoutMs = timeoutMs
         self.intervalMs = intervalMs
         self.json = json
+    }
+
+    /// Validates a `--quiet-polls` count.
+    ///
+    /// One is the floor: zero quiet polls would declare a screen settled before a single pair
+    /// of frames had been compared, which is the one answer this verb must never give.
+    ///
+    /// - Throws: `ProbeError.invalidArgument` (exit 1) below one.
+    public static func validatedQuietPolls(_ count: Int) throws -> Int {
+        guard count >= 1 else {
+            throw ProbeError.invalidArgument(
+                "--quiet-polls must be at least 1, got \(count)"
+            )
+        }
+        return count
     }
 }
 
@@ -56,6 +74,7 @@ public struct WaitStableRunner {
         let startedAtMs = environment.clock.nowMs
         var evaluator = StabilityEvaluator(
             tolerance: options.tolerance,
+            quietPollsRequired: options.quietPollsRequired,
             timeoutMs: options.timeoutMs,
             startedAtMs: startedAtMs
         )

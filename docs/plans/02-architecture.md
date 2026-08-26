@@ -96,7 +96,7 @@ The only mutable state is the poll loop's local accumulator inside a single func
 Every verb: compact human-readable default, `--json` for machine use, `--udid` optional
 (resolves to the single booted simulator when omitted, errors when ambiguous).
 
-### `simprobe wait-stable [--tol 0.5] [--timeout 4s] [--interval 60ms] [--udid <id>]`
+### `simprobe wait-stable [--tol 0.5] [--quiet-polls 3] [--timeout 6s] [--interval 60ms] [--udid <id>]`
 ```
 $ simprobe wait-stable
 stable after 180ms (3 polls, last diff 0.01, tol 0.50)

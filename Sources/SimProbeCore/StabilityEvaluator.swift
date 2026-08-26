@@ -14,8 +14,13 @@ public struct StabilityEvaluator: Equatable, Sendable {
     /// balance, both yield one near-zero diff while the screen is still moving.
     public static let defaultQuietPolls = 3
 
-    /// Default watch budget, matching the documented `--timeout 4s`.
-    public static let defaultTimeoutMs = 4_000
+    /// Default watch budget, matching the documented `--timeout 6s`.
+    ///
+    /// Six, not four: on a loaded host a single `simctl` screenshot can cost more than a
+    /// second, so a four-second budget expired mid-watch and reported a screen that had never
+    /// moved as still moving. The budget only bounds the failure case - a settled screen
+    /// still returns as soon as the quiet run completes.
+    public static let defaultTimeoutMs = 6_000
 
     // MARK: Configuration
 

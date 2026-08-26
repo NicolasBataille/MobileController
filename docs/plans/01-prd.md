@@ -95,8 +95,11 @@ does **not** work: a screen with a micro-animation never produces two identical 
 
 - **A1** — A 30-action agent session using the documented ladder emits **≤ 5,000 tokens** of
   observation (measured: 4,200 with digest; 9,900 with `-i`; 18,400 for the best alternative).
-- **A2** — `simprobe wait-stable` returns in **≤ 400 ms** on an already-settled screen and
-  reports settled within **≤ 400 ms** of the true end of a standard 300 ms transition.
+- **A2** — `simprobe wait-stable` returns in **≈ 0.6–1.2 s** on an already-settled screen with
+  `--quiet-polls 2` on an idle host, **1.5–4 s** with the default 3, and reports settled within
+  one capture of the true end of a standard 300 ms transition. The floor is capture-bound:
+  (`--quiet-polls` + 1) screenshots at 0.2–1.1 s each, so it is set by the quiet run required,
+  not by the poll interval.
 - **A3** — `simprobe motion` returns a diff timeline with **0 bytes of image data** on stdout.
 - **A4** — `simprobe shot` output is **≤ 500 vision tokens** and at exactly 1x logical points,
   so coordinates read off the image map 1:1 onto the accessibility frame.
