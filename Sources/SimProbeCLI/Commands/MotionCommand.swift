@@ -29,7 +29,12 @@ struct MotionCommand: ParsableCommand {
     @Option(help: "Mean absolute luminance difference below which a screen counts as quiet.")
     var tol: Double = FrameDiff.defaultTolerance
 
-    @Option(help: "Directory to write one PNG per sample into. Nothing is written without it.")
+    @Option(
+        help: """
+            Directory to write one PNG per sample into, up to \
+            \(MotionOptions.defaultKeepFramesCap) of them. Nothing is written without it.
+            """
+    )
     var keepFrames: String?
 
     @Flag(help: "Emit one line of JSON instead of the human-readable form.")

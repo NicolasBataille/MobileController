@@ -48,6 +48,35 @@ final class MotionCommandTests: XCTestCase {
         XCTAssertEqual(result.code, 0)
     }
 
+    /// `--keep-frames` stops writing at the cap instead of filling the disk.
+    ///
+    /// A long window on a fast host writes one PNG per sample with nothing bounding the
+    /// total, and the directory the user pointed at is whatever they typed. Sampling still
+    /// runs to the end of the window - the timeline is the answer, the frames are an extra -
+    /// so the cap is reported rather than silently truncating the result.
+    func testKeepFramesStopsAtCap() throws {
+        let directory = temporaryDirectory()
+
+        let result = try runMotion(keepFrames: directory, keepFramesCap: 2)
+
+        let written = try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted()
+        XCTAssertEqual(written, ["frame-000-205ms.png", "frame-001-410ms.png"])
+        // All three samples are still measured and reported.
+        XCTAssertTrue(result.output.out.contains("(3 samples"), result.output.out)
+        XCTAssertTrue(result.output.out.contains("(frames capped at 2)"), result.output.out)
+        XCTAssertEqual(result.code, 0)
+
+        let timeline = try runMotionTimeline(keepFrames: temporaryDirectory(), keepFramesCap: 2)
+        XCTAssertEqual(timeline["framesCapped"] as? Bool, true)
+        XCTAssertEqual((timeline["samples"] as? [[String: Any]])?.count, 3)
+    }
+
+    func testUncappedRunReportsNoCap() throws {
+        let timeline = try runMotionTimeline(keepFrames: temporaryDirectory())
+
+        XCTAssertEqual(timeline["framesCapped"] as? Bool, false)
+    }
+
     func testDefaultRunWritesNoFiles() throws {
         let result = try runMotion()
 
@@ -71,8 +100,16 @@ final class MotionCommandTests: XCTestCase {
         let output: RecordingOutput
     }
 
+    private func temporaryDirectory() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("simprobe-motion-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return url
+    }
+
     private func runMotion(
         keepFrames: URL? = nil,
+        keepFramesCap: Int = MotionOptions.defaultKeepFramesCap,
         json: Bool = false
     ) throws -> MotionResult {
         let output = RecordingOutput()
@@ -82,6 +119,7 @@ final class MotionCommandTests: XCTestCase {
             udid: Fixtures.udid,
             durationMs: 600,
             keepFramesDirectory: keepFrames,
+            keepFramesCap: keepFramesCap,
             json: json
         )
         let code = try MotionRunner(options: options)
@@ -89,8 +127,11 @@ final class MotionCommandTests: XCTestCase {
         return MotionResult(code: code, output: output)
     }
 
-    private func runMotionTimeline() throws -> [String: Any] {
-        let result = try runMotion(json: true)
+    private func runMotionTimeline(
+        keepFrames: URL? = nil,
+        keepFramesCap: Int = MotionOptions.defaultKeepFramesCap
+    ) throws -> [String: Any] {
+        let result = try runMotion(keepFrames: keepFrames, keepFramesCap: keepFramesCap, json: true)
         return try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(result.output.out.utf8)) as? [String: Any]
         )

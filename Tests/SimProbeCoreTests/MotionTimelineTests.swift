@@ -40,9 +40,24 @@ final class MotionTimelineTests: XCTestCase {
 
         XCTAssertEqual(
             json,
-            #"{"fps":4.8,"hadMotion":true,"samples":[{"diff":11,"tMs":0},{"diff":3.2,"tMs":210},"#
-                + #"{"diff":0.4,"tMs":415},{"diff":0.01,"tMs":620}],"settledAtMs":415,"tol":0.5}"#
+            #"{"fps":4.8,"framesCapped":false,"hadMotion":true,"samples":[{"diff":11,"tMs":0},"#
+                + #"{"diff":3.2,"tMs":210},{"diff":0.4,"tMs":415},{"diff":0.01,"tMs":620}],"#
+                + #""settledAtMs":415,"tol":0.5}"#
         )
+    }
+
+    /// The cap shows in both output forms, so a short frame directory is never read as a
+    /// short run.
+    func testCappedFrameWritingIsReportedInBothForms() throws {
+        let capped = MotionTimeline(
+            samples: [TimelineSample(tMs: 0, diff: 11.0), TimelineSample(tMs: 200, diff: 0.0)],
+            tolerance: 0.5,
+            framesCappedAt: 10_000
+        )
+
+        XCTAssertTrue(capped.formatted().hasSuffix("(frames capped at 10000)"), capped.formatted())
+        let json = try String(decoding: capped.jsonEncoded(), as: UTF8.self)
+        XCTAssertTrue(json.contains(#""framesCapped":true"#), json)
     }
 
     func testTimelineWithNoSettlePointReportsNotSettled() throws {
