@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
-## [Unreleased]
+## [0.2.0] — 2026-08-27
 
 ### Added
 - `simprobe frames`: the on-screen accessibility elements with their **1x coordinates** — the
@@ -61,4 +61,5 @@ First public alpha, measured on Xcode 26.6 / iOS 26.5 with agent-device 0.20.10.
 - Pinned to agent-device 0.20.10; see README "Known upstream limitations".
 - `wait-stable` needs ≥ 3 captures (~1.5–4 s) with default `--quiet-polls 3`.
 
+[0.2.0]: https://github.com/NicolasBataille/MobileController/releases/tag/v0.2.0
 [0.1.0]: https://github.com/NicolasBataille/MobileController/releases/tag/v0.1.0
