@@ -48,6 +48,6 @@ class Simprobe < Formula
     assert_match "daemon", shell_output("#{bin}/simprobe --help")
     # The daemon is only ever started by `simprobe daemon start`, so with no arguments it prints
     # its usage and exits 1 — which is a check that needs neither a simulator nor idb.
-    assert_match "usage: simprobe-daemon", shell_output("#{bin}/simprobe-daemon", 1)
+    assert_match "usage: simprobe-daemon", shell_output("#{bin}/simprobe-daemon 2>&1", 1)
   end
 end
