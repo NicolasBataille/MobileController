@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
+## [Unreleased]
+
+### Docs
+- Noted that all four proposed upstream fixes (PRs #2065-#2068 on callstack/agent-device) were
+  merged 2026-08-27, closing #2062/#2063/#2064; none are in a released agent-device version yet
+  (npm's latest is still 0.20.10), so the workarounds and the patched build remain the interim
+  path until the next release.
+
 ## [0.3.0] — 2026-08-27
 
 ### Added

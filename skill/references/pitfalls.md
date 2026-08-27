@@ -63,7 +63,7 @@ the *caller's* implicit scope, so a session opened with an explicit `--session` 
 bare `session list` run from a cwd-scoped shell — an alive, usable session reports
 `{"sessions": []}`. Address the listing the same way you address everything else:
 `agent-device session list --session <name>` (entry 14).
-**Partly fixed in the patched build / upstream PR #2068**: the cwd-scoped session is now addressed
+**Partial fix merged upstream (PR #2068, 2026-08-27); ships in the next release after 0.20.10**: the cwd-scoped session is now addressed
 by its store key, so `DEVICE_IN_USE` names a `--session cwd:<hash>:default` you can actually pass,
 and `session list` reports a `sessionStateDir` that exists. The two scopes are still separate, and
 the "pass `--session` on every command" rule stands unchanged — verified on `0.20.11-mc.1`.
@@ -81,7 +81,7 @@ opened on the pinned device and `snapshot -i` returned that device's tree; `xcru
 <udid> launchctl list` confirmed the app was running on it and not on its sibling. No fallback
 is needed. `--udid` still does not appear in the `help commands` Global Flags block, so it
 remains easy to miss.
-**Fixed in the patched build / upstream PR #2065**: `--device <a-udid>` now answers
+**Merged upstream (PR #2065, 2026-08-27); ships in the next release after 0.20.10**: `--device <a-udid>` now answers
 `Hint: <udid> is the id of "<name>", not its name. Did you mean --udid <udid>?`, and
 `help commands` grows a `Device Selection` block that lists `--platform`, `--device`, `--udid`,
 `--serial` and `--session`.
@@ -113,7 +113,7 @@ agent-device get attrs @e57      # -> {"value":"example.com", …}  => 11 chars
 agent-device snapshot -i         # -> @e38 [key] "supprimer"
 agent-device press @e38 --count 11 --settle
 ```
-**Fixed in the patched build / upstream PR #2066**: `fill <target> ""` *is* the clear-field
+**Merged upstream (PR #2066, 2026-08-27); ships in the next release after 0.20.10**: `fill <target> ""` *is* the clear-field
 primitive — it empties the field and reports `Filled 0 chars`. A **missing** text argument is
 still refused (`INVALID_ARGS: Expected text to be set.`), by design: an omitted argument is a
 mistake, an empty string is an intention. The keyboard-delete workaround above is only needed on
@@ -133,7 +133,7 @@ agent-device batch --steps '[{"command":"press","input":{"target":{"kind":"selec
 ```
 Use selectors, not `@ref` targets, for any step after the first mutation — a second mutating step
 addressed by `@ref` fails `ref_frame_expired` because the first step invalidates the ref frame.
-**Fixed in the patched build / upstream PR #2067** — the *documentation*, not the shape. The shape
+**Merged upstream (PR #2067, 2026-08-27); ships in the next release after 0.20.10** — the *documentation*, not the shape. The shape
 above is unchanged and still required; what changes is that `help batch` now prints it
 (`Each step is {"command":"<name>","input":{...}}` · `There is no positional step form`) along
 with the batchable set, and all three refusals point back at it.

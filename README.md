@@ -102,8 +102,10 @@ message when `idb` is absent.
 every number in this README's tables was measured with it unless a table header says otherwise.
 The build below is optional, unpublished, and for people who would rather have the fixes now.
 
-Four of the limitations listed under *Known upstream limitations* have fixes proposed upstream.
-Those four branches are merged onto upstream `main` on the fork
+Four of the limitations listed under *Known upstream limitations* have fixes merged upstream
+(2026-08-27); they are not in any released version yet (npm's latest is still 0.20.10), so this
+build remains an interim until the next agent-device release ships them. Those four branches are
+also merged onto upstream `main` on the fork
 [`NicolasBataille/agent-device`](https://github.com/NicolasBataille/agent-device), branch
 `mobilecontroller/patched`, versioned **`0.20.11-mc.1`** so `agent-device --version` tells the two
 builds apart. It is not published to npm; build and install it yourself:
@@ -561,13 +563,13 @@ carries the workaround for each; reported upstream on
 fixed in the optional [patched build](#optional-patched-agent-device-build); on the pinned
 0.20.10 all five are live.
 
-1. [#2031 (comment)](https://github.com/callstack/agent-device/issues/2031#issuecomment-5430618009), fix proposed in [PR #2068](https://github.com/callstack/agent-device/pull/2068) — `close` reports success but does not release the device lease, so the next `open`
+1. [#2031 (comment)](https://github.com/callstack/agent-device/issues/2031#issuecomment-5430618009), merged upstream 2026-08-27 in [PR #2068](https://github.com/callstack/agent-device/pull/2068) — will ship in the next agent-device release; until then use the workaround or the patched build — `close` reports success but does not release the device lease, so the next `open`
    fails with `DEVICE_IN_USE` unless the same `--session` is reused. Fixed upstream after 0.20.10
    (#2057); on 0.20.10 use the workaround below.
-2. [#2062](https://github.com/callstack/agent-device/issues/2062), fix proposed in [PR #2067](https://github.com/callstack/agent-device/pull/2067) — `help batch` and its errors do not document the step shape or the batchable
+2. [#2062](https://github.com/callstack/agent-device/issues/2062) (closed), merged upstream 2026-08-27 in [PR #2067](https://github.com/callstack/agent-device/pull/2067) — will ship in the next agent-device release; until then use the workaround or the patched build — `help batch` and its errors do not document the step shape or the batchable
    set; press/fill are batchable with the `{"command","input"}` shape (see pitfalls).
-3. [#2063](https://github.com/callstack/agent-device/issues/2063), fix proposed in [PR #2066](https://github.com/callstack/agent-device/pull/2066) — `fill @ref ""` is rejected with `INVALID_ARGS`; there is no clear-field primitive.
-4. [#2064](https://github.com/callstack/agent-device/issues/2064), fix proposed in [PR #2065](https://github.com/callstack/agent-device/pull/2065) — `--device <udid>` fails with `DEVICE_NOT_FOUND` without hinting at `--udid`, which
+3. [#2063](https://github.com/callstack/agent-device/issues/2063) (closed), merged upstream 2026-08-27 in [PR #2066](https://github.com/callstack/agent-device/pull/2066) — will ship in the next agent-device release; until then use the workaround or the patched build — `fill @ref ""` is rejected with `INVALID_ARGS`; there is no clear-field primitive.
+4. [#2064](https://github.com/callstack/agent-device/issues/2064) (closed), merged upstream 2026-08-27 in [PR #2065](https://github.com/callstack/agent-device/pull/2065) — will ship in the next agent-device release; until then use the workaround or the patched build — `--device <udid>` fails with `DEVICE_NOT_FOUND` without hinting at `--udid`, which
    exists but is missing from the global-flags help.
 5. [#1394 (comment)](https://github.com/callstack/agent-device/issues/1394#issuecomment-5430618195) — The implicit cwd-hash session name coexists with an explicit `--session`, so two
    shells in different directories silently drive two sessions on one device.
