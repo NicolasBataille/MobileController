@@ -38,7 +38,9 @@ Everything in this repository was verified against exactly one triple:
 | Xcode | 26.6 |
 | iOS Simulator runtime | 26.5 |
 
-When that drifts, re-run the benchmark before trusting any number here.
+When that drifts, re-run the benchmark before trusting any number here. The one exception is the
+two *Measured on…* tables further down: they were regenerated on the optional patched build and say
+so in their heading.
 
 ## Install
 
@@ -354,9 +356,12 @@ rows are byte-identical across the two runs, which is what rules out "different
 screen" as the explanation. On `0.20.11-mc.1` the `--json` payload comes back
 pretty-printed inside a `{"success":true,"data":{…}}` envelope; re-serialised
 compact (`| jq -c`) the same 20-ref payload is 945 B, so indentation accounts
-for roughly 570 B of the growth and the payload itself for the rest. Which build
-introduced it is not established here: 0.20.10 is not installed on this host, and
-none of the four merged fixes touches snapshot rendering. **Measure the digest
+for roughly 570 B of the growth and the payload itself for the rest. It is not the patched build's
+doing: `git diff --name-only b1ee2a777..HEAD` on the merged branches touches no
+snapshot, rendering or JSON source file - only `package.json` and `server.json`,
+the version bump. It arrived upstream somewhere between 0.20.10 and
+`0.20.11-dev`; exactly where is not established here, since 0.20.10 is not
+installed on this host. **Measure the digest
 against `snapshot -i` on your own screen before assuming rung 1 is cheaper**, and
 pipe it through `jq -c` if you keep it.
 

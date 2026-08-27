@@ -4,10 +4,14 @@ Pinned: **agent-device 0.20.10 / Xcode 26.6 / iOS 26.5**. Every flag below was r
 `agent-device help` / `agent-device help <command>` at 0.20.10. Anything not in help output is
 tagged `(unverified)`. Failure modes live in `pitfalls.md` — read it before your first `open`.
 
-The optional patched build (`0.20.11-mc.1`, see the project README) changes three things on this
-page, all additive: `fill <target> ""` is accepted and clears the field, `help batch` documents the
-step shape and the batchable set, and `help commands` grows a `Device Selection` block listing the
-selection flags below. Nothing here is *removed* by it. `agent-device --version` says which you have.
+The optional patched build (`0.20.11-mc.1`, see the project README) changes four things on this
+page. Three are additive: `fill <target> ""` is accepted and clears the field, `help batch`
+documents the step shape and the batchable set, and `help commands` grows a `Device Selection`
+block listing the selection flags below. The fourth is a **cost** change, and it is not additive:
+`snapshot -i --level digest --json` came back at **1515 B** where 0.20.10 read 447 B on the same
+screen — pretty-printed inside a `{"success":true,"data":{…}}` envelope, and larger than plain
+`snapshot -i`. Treat every byte figure in the cost table below as a 0.20.10 figure and measure your
+own. `agent-device --version` says which build you have.
 
 ## Selection + global flags
 
@@ -101,6 +105,7 @@ Refs carry an optional pin: `@e12~s698558`. Copy refs **verbatim**, `~sN` includ
 | `snapshot` (full) | 2266 | 570 | 580–1577 |
 | `snapshot -i` | 1295 | 325 | 451–542 |
 | `snapshot -i --level digest --json` | 510 | 128 | 446 |
+| ↳ same call on `0.20.11-mc.1` (different screen, measured) | 1515 | 378 | 276 |
 | `snapshot --diff` (unchanged screen) | 1373 | 343 | ~315 |
 | `screenshot` (420x912 @1x PNG) | 27 (path line) | — | 712–1127 |
 | PNG itself: 172 078 B → **~468 vision tokens** | | | |
