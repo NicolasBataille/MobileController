@@ -3,8 +3,8 @@
 Pinned: **agent-device 0.20.10 / Xcode 26.6 / iOS 26.5**. Every entry was observed on a real
 simulator during the bake-off unless tagged `(unverified)`. Syntax: `agent-device-cheatsheet.md`.
 
-Entries that an **optional patched build** (`0.20.11-mc.1`, README ▸ *Optional: patched
-agent-device build*) resolves carry a **Fixed in the patched build** line. They are kept rather
+Entries that an **optional patched build** (`0.20.11-mc.1`, described in `docs/upstream.md` in
+the MobileController repository) resolves carry a **Fixed in the patched build** line. They are kept rather
 than deleted: the pin above is 0.20.10, and on 0.20.10 every one of them is still live.
 
 ## 1. REAPER GUARD — never `pkill` anything agent-device started

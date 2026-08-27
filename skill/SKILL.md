@@ -7,9 +7,10 @@ description: Drive and observe an iOS Simulator from Bash at minimum token cost 
 
 Verified against exactly one triple: **agent-device 0.20.10 / Xcode 26.6 / iOS 26.5**. If any
 drifts, re-run `bench/run.sh` before trusting a number below. The optional patched build
-(`0.20.11-mc.1`, see the README) fixes four limitations noted here: every *rule* holds on both,
-the **byte costs do not** — rung 1's digest measured 1515 B there against 447 B on 0.20.10, so
-start at rung 2. Check with `agent-device --version`.
+(`0.20.11-mc.1`, see `docs/upstream.md` in the MobileController repository) fixes four of the
+limitations noted here: every *rule* holds on both, the **byte costs do not** — rung 1's digest
+measured 1515 B there against 447 B on 0.20.10, so start at rung 2. Check with
+`agent-device --version`.
 
 Two binaries, both driven from **Bash**. Never as an MCP server.
 - `agent-device` — accessibility tree, actions, sessions.

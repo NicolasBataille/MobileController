@@ -4,8 +4,8 @@ Pinned: **agent-device 0.20.10 / Xcode 26.6 / iOS 26.5**. Every flag below was r
 `agent-device help` / `agent-device help <command>` at 0.20.10. Anything not in help output is
 tagged `(unverified)`. Failure modes live in `pitfalls.md` — read it before your first `open`.
 
-The optional patched build (`0.20.11-mc.1`, see the project README) changes four things on this
-page. Three are additive: `fill <target> ""` is accepted and clears the field, `help batch`
+The optional patched build (`0.20.11-mc.1`, see `docs/upstream.md` in the MobileController
+repository) changes four things on this page. Three are additive: `fill <target> ""` is accepted and clears the field, `help batch`
 documents the step shape and the batchable set, and `help commands` grows a `Device Selection`
 block listing the selection flags below. The fourth is a **cost** change, and it is not additive:
 `snapshot -i --level digest --json` came back at **1515 B** where 0.20.10 read 447 B on the same
