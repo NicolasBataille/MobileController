@@ -11,8 +11,8 @@
 class Simprobe < Formula
   desc "Pixel-stability probe and 1x screenshot tool for the iOS Simulator"
   homepage "https://github.com/NicolasBataille/MobileController"
-  url "https://github.com/NicolasBataille/MobileController/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "dbe49ee3486e8a35008a04bea6b932453a71f0a0c33e0701e5fffc31e336a802"
+  url "https://github.com/NicolasBataille/MobileController/archive/refs/tags/v0.2.0.tar.gz"
+  sha256 "e0e758764c457e4138810eb3b9ef5944049bde89d0201ad473474713c3207583"
   license "MIT"
   head "https://github.com/NicolasBataille/MobileController.git", branch: "main"
 
