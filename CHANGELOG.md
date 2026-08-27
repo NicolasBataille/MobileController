@@ -3,6 +3,42 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
+## [Unreleased]
+
+### Added
+- **The warm action daemon.** `simprobe-daemon` holds one gRPC connection to `idb_companion` open,
+  and `simprobe` talks to it over a newline-delimited JSON protocol on a per-UDID unix socket at
+  `$TMPDIR/simprobe/<udid>.sock`. Measured against the same simulator: a tap costs **16 ms** of
+  wall clock instead of `agent-device press`'s ~1.0-1.5 s, a tree **82 ms** instead of
+  `snapshot -i`'s ~0.3-0.5 s, and a 20-iteration tap+tree loop **2.05 s** instead of ~26-40 s. The
+  spike's mixed-loop measurement was **2.7x** end to end with an XCUITest session live on the same
+  device. Design and caveats: `docs/plans/05-warm-daemon.md`.
+- `simprobe daemon start|stop|status`. `start` spawns the daemon detached, waits for it to answer,
+  then smoke-tests **both** halves — a tree with at least one element *and* a `simctl` screenshot,
+  because idb's own screenshot breaks once its companion outlives a simulator reboot. `stop` is the
+  only thing here that signals a process, and only one its own daemon wrote down whose executable
+  still matches; a recycled pid from a stale file is discarded, never killed. `status` exits 0
+  either way: absence is a result.
+- `simprobe tap <#id | @index | x,y> [--wait-stable]`, which resolves a ref against a fresh tree
+  with the parser `frames` already uses and taps the centre of the element's frame, and
+  `simprobe tree [--interactive] [--json]`, which is `frames`' output from the warm path.
+- Exit-2 error kind `daemonUnavailable`, carrying the exact `simprobe daemon start` line. `tap` and
+  `tree` deliberately do **not** autostart a daemon: hiding a ~1.6 s cold start inside a tap makes
+  one iteration of a loop mysteriously slow.
+- `scripts/regen-idb-stubs.sh`, which regenerates the vendored protobuf/gRPC stubs under
+  `Sources/SimProbeDaemon/Generated/` from **the installed idb client's own descriptor** rather
+  than from upstream `idb.proto` — upstream has grown fields the released companion rejects, so
+  generating from the descriptor is wire-compatible by construction.
+
+### Changed
+- Two executable products instead of one. `simprobe` keeps its single dependency and its ~1-minute
+  clean build (58 s measured, 2.7 MB); gRPC's 22 transitive packages live in `simprobe-daemon`
+  alone (38.5 MB), and `swift build --product simprobe` never compiles any of them.
+- `Formula/simprobe.rb` installs both binaries and asserts both in `test do`. The change takes
+  effect at the next `scripts/bump-formula.sh` tag; the pinned v0.2.0 tarball predates it.
+- `skill/SKILL.md` gains a "fast action path" paragraph and loses redundancy elsewhere to stay
+  within its line budget.
+
 ## [0.2.0] — 2026-08-27
 
 ### Added

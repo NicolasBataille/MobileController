@@ -59,18 +59,25 @@ third-party tap until you say so: without it `brew install` stops with *"Refusin
 formula … from untrusted tap"* and prints the command to run. Read `Formula/simprobe.rb`
 before you trust it — it is under fifty lines and it builds from the tagged source tarball.
 
-The formula builds the release tarball from source (`swift build -c release`), which takes
-30-90 s depending on the machine. There is no bottle.
+The formula builds the release tarball from source and installs **both** binaries, `simprobe` and
+`simprobe-daemon`. There is no bottle.
 
 From source instead:
 
 ```sh
 git clone https://github.com/NicolasBataille/MobileController && cd MobileController
-swift build -c release
-# the binary lands in .build/release/simprobe
+
+swift build -c release --product simprobe   # ~1 min: the CLI alone, one dependency
+swift build -c release                      # ~6 min: adds simprobe-daemon and its gRPC stack
 ```
 
-Add `.build/release` to your `PATH`, or call the binary by its full path.
+`.build/release/simprobe` is 2.7 MB and needs only ArgumentParser. `simprobe-daemon` is 38.5 MB
+and pulls in 22 transitive packages, which is exactly why it is a **separate product**: build it
+only if you want the warm `tap`/`tree` path. Measured clean, on 8 cores: 58 s for the CLI alone,
+253 s for both in debug, 347 s for both in release.
+
+Add `.build/release` to your `PATH`, or call the binaries by their full paths — `tap` and `tree`
+look for `simprobe-daemon` beside the running `simprobe`, so keep the two together.
 
 The automation engine is installed separately and is not vendored here:
 
@@ -157,9 +164,12 @@ in step with this checkout. Either way the agent needs `simprobe` and `agent-dev
 
 ## Using `simprobe`
 
-Five verbs. Every one has a compact human-readable default, a `--json` form, and an exit code
+Eight verbs. Every one has a compact human-readable default, a `--json` form, and an exit code
 a shell can branch on. `--udid` accepts a UDID or a device name and defaults to the single
 booted simulator, so most invocations need no target at all.
+
+Six of them need nothing but Xcode. `frames` needs `idb`; `tap` and `tree` additionally need a
+warm daemon started with `simprobe daemon start` — see [The warm daemon](#the-warm-daemon).
 
 Only `shot --out` and `motion --keep-frames` write anything, and they write wherever you point
 them: the path is taken as given, a symlink is followed to its target, and an existing file is
@@ -179,8 +189,12 @@ SUBCOMMANDS:
   wait-stable             Poll a simulator's screen until it stops changing.
   motion                  Report how much a simulator's screen changed over a window of time.
   shot                    Write one screenshot at 1x logical points and report what it cost.
+  frames                  List the on-screen accessibility elements with their 1x coordinates.
   devices                 List the simulators on this machine, booted ones first.
   diff                    Compare two image files on the same scale the live verbs use.
+  daemon                  Run a warm idb connection so `tap` and `tree` cost milliseconds.
+  tap                     Tap an element or a coordinate through the warm daemon.
+  tree                    List the on-screen elements through the warm daemon.
 ```
 
 ### `wait-stable [--udid <id>] [--tol 0.5] [--timeout 4s] [--interval 60ms] [--json]`
@@ -261,6 +275,91 @@ Elements are named `#accessibilityIdentifier` when the app set one and `@<index>
 zero-size and offscreen elements are dropped and labels are cut at 40 characters. `--json`
 emits one object per element: `{"ref","type","label","x","y","w","h"}`.
 
+## The warm daemon
+
+`simprobe frames` spends 0.6-1.5 s per call, almost all of it starting an `idb` process and
+letting it reconnect to `idb_companion`. `simprobe-daemon` pays that once: it holds a single
+gRPC connection to the companion open, and `tap` and `tree` become socket round trips.
+
+It is a **second binary and a second product**, on purpose. gRPC brings 22 transitive packages
+along; `simprobe` itself still has exactly one dependency and still builds in under a minute.
+`swift build --product simprobe` never compiles any of it. The design and the measurements are
+in [`docs/plans/05-warm-daemon.md`](docs/plans/05-warm-daemon.md).
+
+```
+$ simprobe daemon start --udid <id>
+daemon ready (<id>, tree 15 elements, 1562 ms)
+
+$ simprobe tap "#com.apple.settings.accessibility" --udid <id>
+tapped #com.apple.settings.accessibility (220,389) 1.79 ms
+
+$ simprobe tree --udid <id> | head -3
+Réglages  440x956
+[Top y<120]
+  #BackButton    Button  "Réglages"    (20,62 44x44)
+
+$ simprobe daemon status --udid <id>
+running (<id>, pid 55572, up 21s)
+
+$ simprobe daemon stop --udid <id>
+daemon stopped (<id>)
+```
+
+`daemon start` spawns the daemon detached, waits for it to answer, then **smoke-tests both
+halves**: a tree with at least one element, and a `simctl` screenshot. The screenshot half is
+not decoration — idb's own screenshot breaks once its companion outlives a simulator reboot and
+reconnecting does not heal it, which is why capture stays on `simctl` everywhere in this tool.
+
+The daemon exits on its own after `--idle-timeout` (default 10 minutes), writes one JSON line
+per event to `$TMPDIR/simprobe/<udid>.log`, and records its pid beside its socket. `daemon stop`
+is the only thing here that ever signals a process, and it signals only a pid its own daemon
+wrote down whose executable still matches — a recycled pid from a stale file is discarded, not
+killed.
+
+### `tap <#id | @index | x,y> [--udid <id>] [--wait-stable] [--json]`
+
+Takes the refs `frames` and `tree` print. A `#id` or `@index` is resolved against a fresh tree
+and the tap lands on the centre of that element's frame; `x,y` taps blind and costs no tree read.
+
+A coordinate tap is swallowed silently by anything drawn over it — a keyboard, a sheet, a modal
+— on this engine and on XCUITest alike. `--wait-stable` chains `simprobe wait-stable` onto the
+tap so the result is verified rather than assumed, and its exit code (3 on timeout) becomes the
+command's.
+
+### `tree [--udid <id>] [--interactive] [--json]`
+
+The output `frames` prints, from the daemon instead of from an `idb` process — same parser, same
+banding, same refs.
+
+> **Never compare node counts across engines.** idb's tree is leaner by design than XCUITest's
+> and skips elements `agent-device snapshot` reports. Diffing the two counts, or using either to
+> prove an element is *absent*, produces confident nonsense.
+
+### Measured: daemon versus `agent-device`, iPhone 17 Pro Max / iOS 26.5
+
+Wall time of the whole command from the shell — process start, socket, and the call — using the
+release binaries, loadavg 7 on 8 cores. The process floor (`/usr/bin/true`) was ~2 ms.
+
+| Operation | `agent-device` | `simprobe` + daemon | daemon-side |
+|---|---:|---:|---:|
+| Tap an element | `press` ~1.0-1.5 s | **16 ms** | 1.8 ms |
+| Read the tree | `snapshot -i` ~0.3-0.5 s | **82 ms**, 1.9 KB | ~70 ms |
+| 20x (tap + tree) | ~26-40 s | **2.05 s** (102 ms/iter) | — |
+| Daemon cold start | — | 1.56 s, once | — |
+
+The honest headline is not the per-command ratio: a real loop also waits for the UI, and the
+[coexistence test](docs/plans/04-warm-daemon-spike.md) measured a mixed loop at **526 ms/iter
+against 1433 ms/iter** for pure agent-device — **2.7x**, both 10/10 correct, with an XCUITest
+session live on the same simulator throughout.
+
+### When to use which
+
+`agent-device` stays the default. It owns sessions, refs that survive a relayout, `fill`, and it
+is the engine the skill's escalation ladder is written around. Reach for the daemon when the same
+screen is observed and acted on **many times in a row** — that is where 16 ms and 82 ms beat a
+second per step. It is not a replacement: no session, no text entry, a leaner tree, and a hard
+dependency on `idb_companion`.
+
 ### `devices [--booted] [--json]`
 
 The pinning `agent-device` lacks: its `--device` matches names only, and duplicate names are
@@ -292,7 +391,7 @@ $ echo $?
 |---:|---|
 | 0 | Success, and for `diff` "same within tolerance" |
 | 1 | Usage or invalid arguments |
-| 2 | Environment: `simctl` or `idb` missing or failing, no booted simulator, ambiguous `--udid` |
+| 2 | Environment: `simctl` or `idb` missing or failing, no booted simulator, ambiguous `--udid`, no daemon running (`daemonUnavailable`) |
 | 3 | `wait-stable` timed out before the screen settled |
 | 4 | `diff` exceeded tolerance |
 | 5 | Capture or decode failure |
@@ -442,12 +541,16 @@ snapshot the flow takes after `open` does not always cover it.
 
 ## Documentation
 
-The design is written down before the code, in three documents:
+The design is written down before the code:
 
 - [PRD](docs/plans/01-prd.md) — problem, goals, measured baseline, acceptance targets.
 - [Architecture](docs/plans/02-architecture.md) — repo layout, module split, CLI surface,
   exit codes.
 - [Task list](docs/plans/03-task-list.md) — phased tasks with their TDD red steps.
+- [Warm daemon spike](docs/plans/04-warm-daemon-spike.md) — the feasibility and latency study,
+  including the coexistence test against a live XCUITest session.
+- [Warm daemon design](docs/plans/05-warm-daemon.md) — why the daemon is a second product, the
+  wire protocol, and the build-time budget behind that split.
 
 ## Known upstream limitations (agent-device 0.20.10)
 

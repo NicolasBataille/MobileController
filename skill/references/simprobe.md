@@ -1,9 +1,10 @@
 # simprobe — the pixel probe
 
-Six verbs, no session, no daemon, no private APIs. Five of them need nothing but `xcrun simctl` +
-CoreGraphics; `frames` additionally shells out to `idb`, which is installed separately. Each has a
-compact default line, a `--json` form (one line, sorted keys, byte-stable), and an exit code a shell can
-branch on. `--udid` takes a UDID **or** a device name, defaulting to the single booted simulator.
+Eight verbs, no session, no private APIs. Five need nothing but `xcrun simctl` + CoreGraphics;
+`frames` shells out to `idb`, and `tap`/`tree` go through the optional warm daemon, which also needs
+`idb`. Each has a compact default line, a `--json` form (one line, sorted keys, byte-stable), and an
+exit code a shell can branch on. `--udid` takes a UDID **or** a device name, defaulting to the single
+booted simulator.
 
 ## When to reach for simprobe over `agent-device wait stable`
 
@@ -151,13 +152,71 @@ $ simprobe diff base.png other.png --json
 {"diff":64.36,"same":false,"size":"40x87","tol":0.5}
 ```
 
+## The warm daemon: `daemon start|stop|status`, `tap`, `tree`
+
+`frames` costs 0.6-1.5 s because it starts an `idb` process every call. `simprobe-daemon` holds one
+gRPC connection to `idb_companion` open instead, and `tap`/`tree` become socket round trips. It is a
+**second binary** installed beside `simprobe` — the CLI itself gains no dependency from it.
+
+```
+$ simprobe daemon start --udid <id> [--idle-timeout 600s] [--json]
+daemon ready (<id>, tree 15 elements, 1562 ms)
+
+$ simprobe daemon status --udid <id>
+running (<id>, pid 55572, up 21s)       # or: not running (<id>) — exit 0 either way
+
+$ simprobe daemon stop --udid <id>
+daemon stopped (<id>)                   # or: no daemon running (<id>)
+```
+
+`start` spawns the daemon detached, waits for it to answer, then smoke-tests **both** halves: a tree
+with ≥1 element, and a `simctl` screenshot. Capture never goes through idb — idb's own screenshot
+breaks once its companion outlives a simulator reboot and reconnecting does not heal it. The daemon
+exits after `--idle-timeout` (default 10 min), logs one JSON line per event to
+`$TMPDIR/simprobe/<udid>.log`, and records its pid beside its socket. `stop` signals only a pid its
+own daemon wrote down whose executable still matches; a recycled pid is discarded, never killed.
+
+```
+$ simprobe tap "#com.apple.settings.accessibility" --udid <id>
+tapped #com.apple.settings.accessibility (220,389) 1.79 ms
+
+$ simprobe tap 220,389 --udid <id> --wait-stable --json
+{"ms":1.79,"x":220,"y":389}
+stable after 4 polls  (312 ms, tol 0.50)
+
+$ simprobe tree --udid <id> [--interactive] [--json]     # `frames` output, from the daemon
+```
+
+`tap` takes the refs `frames` and `tree` print: `#id` and `@index` are resolved against a fresh tree
+and the tap lands on the **centre** of that element's frame; a bare `x,y` taps blind and skips the
+tree read. An unknown ref is exit 1 (`re-read it with: simprobe tree`) and nothing is tapped.
+`--wait-stable` chains `wait-stable` afterwards and its exit 3 becomes the command's — worth using,
+because a coordinate tap is swallowed silently by a keyboard, sheet or modal on **both** engines.
+
+With no daemon running, `tap` and `tree` exit **2** with kind `daemonUnavailable` and the exact
+command that fixes it. They deliberately do not autostart one: the cold start is ~1.6 s and hiding
+that inside a tap makes one iteration of a loop mysteriously slow.
+
+**Measured, iPhone 17 Pro Max / iOS 26.5, release binaries, loadavg 7 on 8 cores** — wall time of
+the whole command, process start included; the `/usr/bin/true` floor was ~2 ms:
+
+| | `agent-device` | daemon | daemon-side |
+|---|---:|---:|---:|
+| tap | `press` ~1.0-1.5 s | **16 ms** | 1.8 ms |
+| tree | `snapshot -i` ~0.3-0.5 s | **82 ms** (1.9 KB) | ~70 ms |
+| 20x (tap+tree) | ~26-40 s | **2.05 s** | — |
+
+> **Node counts are not comparable across engines.** idb's tree is leaner by design than XCUITest's.
+> Never diff `simprobe tree` counts against `agent-device snapshot` counts, and never use either to
+> prove an element is *absent*.
+
 ## Exit codes
 
 | Code | Meaning |
 |---:|---|
 | 0 | Success — and for `diff`, "same within tolerance" |
 | 1 | Usage or invalid arguments (unknown flag, unknown verb, `--width` over the source width) |
-| 2 | Environment: `simctl` or `idb` missing or failing, no booted simulator, ambiguous or unknown `--udid` |
+| 2 | Environment: `simctl` or `idb` missing or failing, no booted simulator, ambiguous or unknown `--udid`, no daemon running |
 | 3 | `wait-stable` timed out before the screen settled |
 | 4 | `diff` exceeded `--tol` |
 | 5 | Capture or decode failure (unreadable image, frame size mismatch) |
@@ -167,4 +226,5 @@ $ simprobe diff base.png other.png --json
 empty; with `--json` the envelope `{"error":{"code":5,"kind":"imageUnreadable","message":"…"}}` goes to
 **stdout**, so a caller parsing stdout never scrapes stderr. `kind` is a stable discriminator:
 `invalidArgument`, `simctlUnavailable`, `simctlFailed`, `noBootedDevice`, `ambiguousDevice`,
-`deviceNotFound`, `captureFailed`, `frameFailure`, `imageUnreadable`, `dependencyMissing`, `idbFailed`.
+`deviceNotFound`, `captureFailed`, `frameFailure`, `imageUnreadable`, `dependencyMissing`, `idbFailed`,
+`daemonUnavailable`.

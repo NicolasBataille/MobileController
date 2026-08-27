@@ -12,3 +12,6 @@ node_modules/
 .local/
 bench/out/
 bench/local.env
+
+# Left behind when a coverage-instrumented binary is run outside `swift test`.
+*.profraw

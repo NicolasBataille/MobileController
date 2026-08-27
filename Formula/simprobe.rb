@@ -25,20 +25,29 @@ class Simprobe < Formula
     # --disable-sandbox: SwiftPM's own build sandbox denies the writes the manifest needs
     # under Homebrew's staging directory.
     system "swift", "build", "-c", "release", "--disable-sandbox"
+    # Both products: `simprobe tap` and `simprobe tree` look for `simprobe-daemon` as a sibling of
+    # the running binary rather than on PATH, so a fresh CLI is never paired with a stale daemon.
     bin.install ".build/release/simprobe"
+    bin.install ".build/release/simprobe-daemon"
   end
 
   def caveats
     <<~EOS
-      `simprobe frames` additionally needs idb, which is not a dependency of this formula
-      because every other verb works without it:
+      `simprobe frames`, `tap` and `tree` additionally need idb, which is not a dependency of
+      this formula because every other verb works without it:
 
         brew install facebook/fb/idb-companion && pip3 install fb-idb
+
+      `tap` and `tree` also need a warm daemon: `simprobe daemon start --udid <udid>`.
     EOS
   end
 
   test do
     assert_match version.to_s, shell_output("#{bin}/simprobe --version")
     assert_match "wait-stable", shell_output("#{bin}/simprobe --help")
+    assert_match "daemon", shell_output("#{bin}/simprobe --help")
+    # The daemon is only ever started by `simprobe daemon start`, so with no arguments it prints
+    # its usage and exits 1 — which is a check that needs neither a simulator nor idb.
+    assert_match "usage: simprobe-daemon", shell_output("#{bin}/simprobe-daemon", 1)
   end
 end

@@ -5,19 +5,17 @@ description: Drive and observe an iOS Simulator from Bash at minimum token cost 
 
 # MobileController
 
-Verified against exactly one triple: **agent-device 0.20.10 / Xcode 26.6 / iOS 26.5**.
-If any of those drifts, re-run `bench/run.sh` before trusting a number below.
-An optional patched build (`0.20.11-mc.1`, see the project README) fixes four of the limitations
-called out here. Every *rule* below holds on both builds; the **byte costs do not**. On the
-`0.20.11-dev` base (incl. the patched build) rung 1's digest measured 1515 B on a screen where
-0.20.10 returned 447 B — larger than rung 2 — so start at rung 2 (`snapshot -i`) there instead.
-Check which build you have with `agent-device --version`.
+Verified against exactly one triple: **agent-device 0.20.10 / Xcode 26.6 / iOS 26.5**. If any
+drifts, re-run `bench/run.sh` before trusting a number below. The optional patched build
+(`0.20.11-mc.1`, see the README) fixes four limitations noted here: every *rule* holds on both,
+the **byte costs do not** — rung 1's digest measured 1515 B there against 447 B on 0.20.10, so
+start at rung 2. Check with `agent-device --version`.
 
 Two binaries, both driven from **Bash**. Never as an MCP server.
 - `agent-device` — accessibility tree, actions, sessions.
-- `simprobe` — pixel-level "is it settled?", screenshots at 1x, element coordinates, UDID lookup.
-  No session needed. `simprobe frames` additionally needs `idb`
-  (`brew install facebook/fb/idb-companion && pip3 install fb-idb`); every other verb does not.
+- `simprobe` — pixel-level "is it settled?", 1x screenshots, element coordinates, UDID lookup, and
+  a warm action daemon. No session needed. `frames`, `tap` and `tree` need `idb`
+  (`brew install facebook/fb/idb-companion && pip3 install fb-idb`); no other verb does.
 
 ## 1. Observation escalation ladder
 
@@ -32,15 +30,12 @@ Start at the cheapest rung. Step up **only** when the rung below cannot answer t
 | 5 | `simprobe shot --out /tmp/s.jpg` | ~470-510 vision tokens | Rendering questions neither tree nor frame can answer (colour, overlap, actual drawing). |
 
 `--level` is a **global** flag, not a `snapshot` flag. `-i` = interactive nodes only.
-
-**Re-observation short-circuit.** Already seen this screen this session? Use
-`agent-device snapshot --diff` (or `agent-device diff snapshot`) — it emits only what changed.
-`press … --settle` already returns that diff for free, so continue from it instead of
-re-snapshotting. One field's value: `agent-device get attrs @<ref>` (~294 B). One element under a coordinate:
-`simprobe frames --point x,y` (~76 B).
+**Re-observation short-circuit.** Seen this screen already? `agent-device snapshot --diff` emits
+only what changed, and `press … --settle` returns that diff for free — continue from it. One
+field: `get attrs @<ref>` (~294 B). One element under a coordinate: `simprobe frames --point x,y`
+(~76 B).
 
 Refs expire on any device action. Re-observe, then act. Copy refs verbatim, `~sN` pin included.
-
 ## 2. Action rule
 
 | Need | Command | Cost |
@@ -51,26 +46,32 @@ Refs expire on any device action. Re-observe, then act. Copy refs verbatim, `~sN
 | Act, then verify **pixels** settled | `agent-device press @<ref>` then `simprobe wait-stable` | ~60 B, +1.5-4 s |
 
 `--settle` waits for AX quiet (`--settle-quiet`, default 500 ms; deadline `--timeout`, default
-10 s). AX quiet is **not** pixels quiet: implicit SwiftUI animations, crossfades and
-Canvas/Lottie views go quiet in the tree while still moving on screen. For rendering truth use
-`simprobe wait-stable` / `simprobe motion`, which need no session and work in teardown.
-A `simprobe` verdict costs four `simctl` captures at 0.2-1.1 s each — seconds, not milliseconds,
-and more under host load. Raise `--timeout` rather than lowering `--tol`.
+10 s). AX quiet is **not** pixels quiet: implicit SwiftUI animations, crossfades and Canvas/Lottie
+views go quiet in the tree while still moving on screen. For rendering truth use `simprobe
+wait-stable` / `motion` — no session, works in teardown, costs four `simctl` captures at 0.2-1.1 s
+each. Raise `--timeout` rather than lowering `--tol`.
 
-**Text entry: always `fill`.** `agent-device fill @<ref> "text"` uses XCUITest `typeText`, which
-is layout-independent and verified verbatim on an AZERTY simulator. It *replaces* the value.
-There is **no clear primitive at 0.20.10** — `fill @ref ""` is rejected. To empty a field, press
-the app's own clear button, or `press @<delete-key> --count N` on the keyboard element (its label
-is locale-dependent; read it from a snapshot). On the patched build `fill @ref ""` *is* the clear
-primitive (a *missing* text argument is still refused). See `references/pitfalls.md` §6.
+**Fast action path — for loops, not single steps.** `simprobe daemon start --udid <udid>` holds a
+warm idb connection; `simprobe tap <#id|@index|x,y>` then costs **16 ms** and `simprobe tree`
+**82 ms**, against ~1.0-1.5 s and ~0.3-0.5 s for `press`/`snapshot -i` — a mixed loop measured
+**2.7x faster**, 10/10 correct, with an XCUITest session live on the same simulator. Worth the
+1.6 s cold start only when you observe-and-act on one screen many times; `daemon stop` when done.
+No session, no `fill`, and a leaner tree: **never diff idb node counts against snapshot counts,
+nor use either to prove an element absent.** Verify every tap (`--wait-stable`), as with `press`.
 
-**Reading a value back: `get attrs`, never `get text`/`is text`.** Both of those resolve to the
-accessibility **label** — the element's name — while what it displays lives in `value`. On an
-element carrying both, `is text @ref "example.com"` fails against the label and looks like a bug in
-the app. Read `get attrs` and match the `value` field specifically. See `references/pitfalls.md` §15.
+**Text entry: always `fill`.** `agent-device fill @<ref> "text"` uses XCUITest `typeText`:
+layout-independent, verified on an AZERTY simulator, and it *replaces* the value. There is **no
+clear primitive at 0.20.10** — `fill @ref ""` is rejected; empty a field with the app's own clear
+button or `press @<delete-key> --count N` (label is locale-dependent). On the patched build
+`fill @ref ""` *is* the clear primitive. See `references/pitfalls.md` §6.
+
+**Reading a value back: `get attrs`, never `get text`/`is text`.** Both resolve to the
+accessibility **label** while what the element displays lives in `value`, so `is text @ref
+"example.com"` fails against the label and looks like an app bug. Match `value` specifically
+(`references/pitfalls.md` §15).
 
 **Launch with fixtures:** `agent-device open com.example.app --launch-args <arg>` — repeatable,
-forwarded verbatim. Do not shell out to `simctl launch` for this.
+forwarded verbatim. Never `simctl launch` for this.
 
 ## 3. Session hygiene
 
@@ -93,34 +94,32 @@ Apple Watch, and every action afterwards lands on the wrong device. With **sever
 simulators booted the first entry is merely the newest runtime — assert the target by snapshot
 content (or pass the UDID explicitly) before acting on it.
 
-`agent-device session list` filters by the **caller's** scope, so a session opened under an
-explicit `--session` lists as `{"sessions": []}` from a cwd-scoped shell. Pass the same
-`--session` to the listing before concluding nothing is open (`references/pitfalls.md` §14).
+`agent-device session list` filters by the **caller's** scope: a session opened under an explicit
+`--session` lists as `{"sessions": []}` from a cwd-scoped shell. Pass the same `--session` to the
+listing before concluding nothing is open (`references/pitfalls.md` §14).
 
 **Teardown, in order:** `agent-device close` → `agent-device daemon stop --clean` (the sanctioned
-reclaim of retained runner processes and leases). Add `close --shutdown` to stop the simulator.
-`daemon stop --clean` reclaims **every** retained runner and lease owned by that daemon, not just
-yours: if another run shares the host daemon, give yours its own `AGENT_DEVICE_STATE_DIR` first.
+reclaim of runners and leases; add `close --shutdown` to stop the simulator), plus `simprobe
+daemon stop` if you started one. `daemon stop --clean` reclaims **every** retained runner owned by
+that daemon: if another run shares the host daemon, give yours its own `AGENT_DEVICE_STATE_DIR`.
 
 ## 4. The five hard DON'Ts
 
 1. **Never `pkill`/`kill` anything agent-device started.** Three processes survive `close` by
-   design (node daemon, `xcodebuild test-without-building`, an in-simulator `AgentDeviceRunner`);
-   the in-sim one idle-stops after ~5 min, so it is time-bounded. SIGTERM to the in-simulator
-   runner **poisons accessibility device-wide for every tool until the simulator is rebooted**.
-   Use `daemon stop --clean`.
+   design (node daemon, `xcodebuild test-without-building`, an in-simulator `AgentDeviceRunner`,
+   which idle-stops after ~5 min). SIGTERM to the in-simulator runner **poisons accessibility
+   device-wide for every tool until the simulator is rebooted**. Use `daemon stop --clean`.
 2. **Never run agent-device as an MCP server.** Tool schemas cost 3k-66k tokens on every
    sampling; the CLI costs zero standing tokens.
-3. **Never take a full-resolution screenshot.** `simprobe shot` at 1x logical points costs
-   ~470-510 vision tokens depending on screen (402x874 -> 468, 420x912 -> 510) vs ~4,200 at 3x;
-   its coordinates map 1:1 onto AX frames. The exact number is a property of the screen, not a
-   constant: read it off the summary line the verb prints.
+3. **Never take a full-resolution screenshot.** `simprobe shot` at 1x costs ~470-510 vision tokens
+   (402x874 -> 468, 420x912 -> 510) against ~4,200 at 3x, and its coordinates map 1:1 onto AX
+   frames. The number is a property of the screen: read it off the summary line.
 4. **Never trust a snapshot taken mid-animation.** The AX tree is silently *truncated* while
    animating — 1-20 nodes instead of the settled 42, returned fast and wrong. Settle first
    (`--settle`, or `simprobe wait-stable`), then snapshot.
 5. **Never send HID keycodes or key-combos for text on a non-QWERTY simulator.** agent-device has
-   no `key`/`key-combo` verb at all; reaching for another tool to fake one corrupts input
-   (`example.com` → `Exq,ple:co,`) and Cmd+HID('a') is **Cmd+Q** on AZERTY — it quits the app.
+   no `key` verb; faking one with another tool corrupts input (`example.com` → `Exq,ple:co,`) and
+   Cmd+HID('a') is **Cmd+Q** on AZERTY — it quits the app.
 
 ## 5. Worked flow — "does the sheet animate in, and does the field accept input?"
 
@@ -131,9 +130,9 @@ $AD snapshot -i --level digest --json                             # rung 1: ~450
 $AD press @e12                                                    # bare: ~37 B, ~1.5 s
 simprobe motion 1500 --udid "$UDID"                               # did it move, and when did it stop?
 $AD snapshot -i --level digest --json                             # fresh refs after the transition
+# many steps on one screen instead? simprobe daemon start, then tap/tree, then daemon stop.
 $AD fill @e57 "user@example.com" --settle                         # layout-independent; diff is the proof
 $AD get attrs @e57                                                # ~294 B: read the value back
-simprobe wait-stable --udid "$UDID" --timeout 8s                  # pixel truth before asserting
 simprobe shot --udid "$UDID" --out /tmp/s.jpg                     # ~470-510 vision tokens, only if needed
 $AD close
 agent-device daemon stop --clean                                  # sanctioned reclaim. NEVER pkill.
@@ -144,7 +143,6 @@ agent-device daemon stop --clean                                  # sanctioned r
 - `references/agent-device-cheatsheet.md` — every verb and flag, output shapes, measured costs,
   environment variables.
 - `references/pitfalls.md` — fifteen symptom → cause → workaround entries: REAPER GUARD, the lease
-  leak, cwd-hash sessions, AZERTY, field clearing, stale refs, host-load failures, scoped
-  `session list`, and label-vs-value reads.
-- `references/simprobe.md` — the six simprobe verbs, exit codes, `--json` shapes, how to read a motion
-  timeline, and the `frames` banding/ref format.
+  leak, cwd-hash sessions, AZERTY, field clearing, stale refs, and label-vs-value reads.
+- `references/simprobe.md` — every simprobe verb, exit codes, `--json` shapes, the motion timeline,
+  the `frames`/`tree` banding and ref format, and the daemon's lifecycle.
