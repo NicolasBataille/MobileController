@@ -121,6 +121,31 @@ final class DaemonLifecycleTests: XCTestCase {
         }
     }
 
+    /// The daemon binds its socket before it reaches the companion, so an answered `ping` is
+    /// not a usable daemon. Smoke-testing one that is still connecting is how `start` used to
+    /// fail on a daemon that was about to work perfectly.
+    func testStartWaitsForTheCompanionRatherThanForTheFirstAnswer() throws {
+        let context = Context(pingsWhileConnecting: 3)
+
+        let report = try context.launcher().start(DaemonLaunchOptions(udid: "UDID"))
+
+        XCTAssertGreaterThanOrEqual(context.clock.sleeps.count, 3, "start never waited")
+        XCTAssertEqual(report.elementCount, 11)
+    }
+
+    /// A daemon somebody else started a second ago is in that same half-built state, and the
+    /// reuse path has to wait for it too.
+    func testStartWaitsForAReusedDaemonThatIsStillConnecting() throws {
+        let context = Context(pingsWhileConnecting: 2)
+        context.client.markSpawned()
+
+        let report = try context.launcher().start(DaemonLaunchOptions(udid: "UDID"))
+
+        XCTAssertTrue(report.wasAlreadyRunning)
+        XCTAssertTrue(context.spawner.spawns.isEmpty)
+        XCTAssertGreaterThanOrEqual(context.clock.sleeps.count, 1, "reuse never waited")
+    }
+
     // MARK: - Stop and status
 
     func testStopAsksTheDaemonToExit() throws {
@@ -129,6 +154,48 @@ final class DaemonLifecycleTests: XCTestCase {
 
         XCTAssertTrue(try context.launcher().stop(udid: "UDID"))
         XCTAssertFalse(context.client.isUp)
+    }
+
+    /// `stop` returning while the process is still alive is what let a `stop; start` pair race:
+    /// the old daemon still owned the socket the new one was unlinking.
+    func testStopWaitsForTheProcessToActuallyGo() throws {
+        let context = Context(checksBeforeExit: 3)
+        context.client.markSpawned()
+        let pidFile = try context.writePidFile()
+
+        XCTAssertTrue(try context.launcher().stop(udid: "UDID"))
+
+        XCTAssertGreaterThanOrEqual(context.liveness.checkCount, 3, "stop never waited")
+        XCTAssertTrue(context.liveness.terminations.isEmpty, "a daemon that left needs no signal")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: pidFile))
+    }
+
+    /// A daemon that ignores the request is signalled — but only at the deadline, and only
+    /// after the wait, and the pidfile survives until it is actually gone.
+    func testStopInsistsWithASignalAtTheDeadline() throws {
+        let context = Context(checksBeforeExit: Int.max)
+        context.client.markSpawned()
+        _ = try context.writePidFile()
+
+        XCTAssertTrue(try context.launcher().stop(udid: "UDID"))
+
+        XCTAssertEqual(context.liveness.terminations.map(\.pid), [4_242])
+        XCTAssertGreaterThanOrEqual(
+            context.clock.sleeps.count,
+            DaemonLauncher.stopTimeoutMs / DaemonLaunchOptions.readyPollIntervalMs - 1
+        )
+    }
+
+    /// The socket is gone but the process is not: the pidfile is the only handle left, and it
+    /// is removed after the signal has been confirmed to have worked, never before.
+    func testStopFallsBackToThePidfileAndRemovesItLast() throws {
+        let context = Context(checksBeforeExit: 1)
+        let pidFile = try context.writePidFile()
+
+        XCTAssertTrue(try context.launcher().stop(udid: "UDID"))
+
+        XCTAssertEqual(context.liveness.terminations.map(\.pid), [4_242])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: pidFile))
     }
 
     func testStopWithNothingRunningIsNotAnError() throws {
@@ -250,6 +317,7 @@ final class DaemonLifecycleTests: XCTestCase {
         let client: SpawnableDaemonClient
         let spawner: FakeProcessSpawner
         let clock = VirtualClock()
+        let liveness: FakeProcessLiveness
         /// One mid-grey frame: the smoke test only ever asks whether a capture *worked*.
         let capture = ScriptedCapture(
             frames: (try? TestFrames.uniform(width: 8, height: 8, luminance: 128)).map { [$0] }
@@ -258,13 +326,19 @@ final class DaemonLifecycleTests: XCTestCase {
         init(
             treeJSON: String = ElementFixture.describeAll,
             pingsBeforeReady: Int = 0,
-            neverStarts: Bool = false
+            pingsWhileConnecting: Int = 0,
+            neverStarts: Bool = false,
+            checksBeforeExit: Int = 0
         ) {
+            liveness = FakeProcessLiveness(checksBeforeExit: checksBeforeExit)
             let base = FileManager.default.temporaryDirectory
                 .appendingPathComponent("simprobe-tests-\(UUID().uuidString)", isDirectory: true)
             paths = DaemonPaths(base: base)
             let client = SpawnableDaemonClient(
-                treeJSON: treeJSON, pingsBeforeReady: pingsBeforeReady)
+                treeJSON: treeJSON,
+                pingsBeforeReady: pingsBeforeReady,
+                pingsWhileConnecting: pingsWhileConnecting
+            )
             self.client = client
             let markSpawned: @Sendable () -> Void = { client.markSpawned() }
             let onSpawn: (@Sendable () -> Void)? = neverStarts ? nil : markSpawned
@@ -284,8 +358,18 @@ final class DaemonLifecycleTests: XCTestCase {
                 spawner: spawner,
                 clock: clock,
                 capture: capture,
-                executable: Self.executable
+                executable: Self.executable,
+                liveness: liveness
             )
+        }
+
+        /// The pidfile a running daemon would have left, which is what `stop` waits on.
+        @discardableResult
+        func writePidFile() throws -> String {
+            try paths.createDirectory(for: "UDID")
+            let path = paths.pidFile(udid: "UDID")
+            try DaemonRecord(pid: 4_242, udid: "UDID", executable: Self.executable).write(to: path)
+            return path
         }
     }
 }

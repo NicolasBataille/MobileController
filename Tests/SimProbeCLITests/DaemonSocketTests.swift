@@ -123,27 +123,24 @@ final class DaemonSocketTests: XCTestCase {
         XCTAssertEqual(written, "started\n")
     }
 
-    func testSpawningSomethingThatIsNotThereFails() {
+    /// The log is opened before the child is started, so this has to fail on the binary rather
+    /// than on the log — which is why it is given a real one.
+    func testSpawningSomethingThatIsNotThereFails() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("simprobe-spawn-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+
         XCTAssertThrowsError(
-            try DetachedProcessSpawner()
-                .spawnDetached("/nonexistent/simprobe-daemon", [], logPath: "/dev/null")
+            try DetachedProcessSpawner().spawnDetached(
+                "/nonexistent/simprobe-daemon",
+                [],
+                logPath: directory.appendingPathComponent("daemon.log").path
+            )
         ) { error in
             XCTAssertEqual((error as? ProbeError)?.exitCode, 5)
+            XCTAssertTrue("\(error)".contains("/nonexistent/simprobe-daemon"), "\(error)")
         }
-    }
-
-    // MARK: - Process identity
-
-    func testAProcessIsIdentifiedByItsExecutable() throws {
-        let own = ProcessInfo.processInfo.processIdentifier
-        let path = try XCTUnwrap(ProcessIdentity.executablePath(of: own))
-
-        XCTAssertTrue(ProcessIdentity.isRunning(pid: own, executable: path))
-        XCTAssertFalse(
-            ProcessIdentity.isRunning(pid: own, executable: "/usr/bin/something-else"),
-            "a recycled pid running a different binary must not be mistaken for the daemon"
-        )
-        XCTAssertNil(ProcessIdentity.executablePath(of: 0))
     }
 
     /// Under the test runner there is no `simprobe-daemon` beside the executable, so this is the

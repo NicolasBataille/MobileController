@@ -69,6 +69,14 @@ public struct DaemonResponse: Codable, Equatable, Sendable {
     public let udid: String?
     public let uptimeMs: Int?
 
+    /// Set on a `ping` answered by a daemon that has bound its socket but has not finished
+    /// reaching `idb_companion` yet.
+    ///
+    /// Present only while that is true, so an old client reading an old-shaped response sees
+    /// exactly what it saw before. `daemon start` waits for this to stop being set rather than
+    /// for the first answer, which is what keeps the smoke test off a half-built daemon.
+    public let connecting: Bool?
+
     /// `ProbeError.kind` of the failure, when `ok` is false.
     public let kind: String?
     public let message: String?
@@ -80,6 +88,7 @@ public struct DaemonResponse: Codable, Equatable, Sendable {
         pid: Int32? = nil,
         udid: String? = nil,
         uptimeMs: Int? = nil,
+        connecting: Bool? = nil,
         kind: String? = nil,
         message: String? = nil
     ) {
@@ -89,6 +98,7 @@ public struct DaemonResponse: Codable, Equatable, Sendable {
         self.pid = pid
         self.udid = udid
         self.uptimeMs = uptimeMs
+        self.connecting = connecting
         self.kind = kind
         self.message = message
     }
@@ -135,13 +145,27 @@ public enum DaemonProtocol {
     public static func unwrap(_ response: DaemonResponse, op: DaemonOperation) throws
         -> DaemonResponse
     {
-        guard response.ok else {
-            throw ProbeError.idbFailed(
-                command: "daemon \(op.rawValue)",
-                detail: response.message ?? "the daemon reported a failure with no message"
-            )
-        }
+        guard response.ok else { throw error(from: response, op: op) }
         return response
+    }
+
+    /// Rebuilds the error a `kind` came from, so the exit status survives the socket.
+    ///
+    /// Flattening every in-band failure to `idbFailed` made `simprobe tap #nope` exit 2 through
+    /// the daemon and 1 through every other path, for the same mistake — and exit codes are the
+    /// CLI's contract with the shell. The payload-carrying cases (`ambiguousDevice`) cannot be
+    /// reconstructed from a line of JSON and are not ones the daemon ever reports; anything
+    /// unrecognised keeps the old exit 2, which is the right answer for "the daemon said
+    /// something this client does not know about".
+    static func error(from response: DaemonResponse, op: DaemonOperation) -> ProbeError {
+        let message = response.message ?? "the daemon reported a failure with no message"
+        switch response.kind ?? "" {
+        case ProbeError.invalidArgument("").kind: return .invalidArgument(message)
+        case ProbeError.captureFailed("").kind: return .captureFailed(message)
+        case ProbeError.frameFailure("").kind: return .frameFailure(message)
+        case ProbeError.imageUnreadable("").kind: return .imageUnreadable(message)
+        default: return .idbFailed(command: "daemon \(op.rawValue)", detail: message)
+        }
     }
 
     private static func decode<T: Decodable>(_ type: T.Type, from line: String, what: String)

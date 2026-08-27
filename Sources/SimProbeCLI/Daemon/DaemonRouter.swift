@@ -49,14 +49,17 @@ public struct DaemonReply: Equatable, Sendable {
 /// part worth having tests for.
 public struct DaemonRouter: Sendable {
 
-    private let actor: any IdbActing
+    /// `nil` while the daemon is still reaching the companion: the socket is bound and `ping`
+    /// answers, but there is nothing to tap with yet.
+    private let actor: (any IdbActing)?
+
     private let udid: String
     private let pid: Int32
     private let ticker: any MonotonicTicker
     private let startedAtMicroseconds: Int
 
     public init(
-        actor: any IdbActing,
+        actor: (any IdbActing)?,
         udid: String,
         pid: Int32,
         ticker: any MonotonicTicker = SystemTicker(),
@@ -77,9 +80,12 @@ public struct DaemonRouter: Sendable {
                     ok: true,
                     pid: pid,
                     udid: udid,
-                    uptimeMs: (ticker.nowMicroseconds - startedAtMicroseconds) / 1_000
+                    uptimeMs: (ticker.nowMicroseconds - startedAtMicroseconds) / 1_000,
+                    connecting: actor == nil ? true : nil
                 )
             )
+        // Answered while connecting too: a daemon that cannot yet be used must still be one
+        // `daemon stop` can put down, or a slow `idb connect` becomes an unkillable process.
         case .stop:
             return DaemonReply(response: DaemonResponse(ok: true), shouldStop: true)
         case .tree:
@@ -87,6 +93,15 @@ public struct DaemonRouter: Sendable {
         case .tap:
             guard let x = request.x, let y = request.y else {
                 return DaemonReply(response: .failure(.invalidArgument("tap needs both x and y")))
+            }
+            // A NaN reaches the HID stream as a point the companion cannot place and answers
+            // for with a stream error several seconds later; a negative one lands off screen.
+            // Both are the caller's arithmetic, and both are cheaper to refuse than to perform.
+            guard x.isFinite, y.isFinite, x >= 0, y >= 0 else {
+                return DaemonReply(
+                    response: .failure(
+                        .invalidArgument(
+                            "tap needs finite, non-negative coordinates, got (\(x),\(y))")))
             }
             return await measured {
                 try await $0.tap(x: x, y: y)
@@ -101,6 +116,14 @@ public struct DaemonRouter: Sendable {
     /// case this design has to survive, and a client that gets `ok: false` can retry against a
     /// process that is still warm.
     private func measured(_ body: (any IdbActing) async throws -> String?) async -> DaemonReply {
+        guard let actor else {
+            return DaemonReply(
+                response: .failure(
+                    .idbFailed(
+                        command: "daemon",
+                        detail: "still connecting to idb_companion for \(udid); retry shortly"
+                    )))
+        }
         let started = ticker.nowMicroseconds
         do {
             let tree = try await body(actor)

@@ -74,6 +74,61 @@ final class TapCommandTests: XCTestCase {
         XCTAssertEqual(client.operations, [.tree], "nothing may be tapped after a failed lookup")
     }
 
+    /// An app may reuse an identifier across a screen, and "the first match" is a coin flip the
+    /// caller did not ask for. Both candidates are named by index, which is what tells them
+    /// apart — the ref they share does not.
+    func testADuplicateRefIsRefusedRatherThanResolvedToTheFirstMatch() {
+        let snapshot = Self.snapshot(
+            Self.element(
+                index: 3, identifier: "row.item", frame: .init(x: 0, y: 10, width: 40, height: 40)),
+            Self.element(
+                index: 7, identifier: "row.item", frame: .init(x: 0, y: 90, width: 40, height: 40))
+        )
+
+        XCTAssertThrowsError(try TapTarget.identifier("row.item").resolve(in: snapshot)) { error in
+            XCTAssertEqual((error as? ProbeError)?.exitCode, 1)
+            XCTAssertTrue("\(error)".contains("@3"), "\(error)")
+            XCTAssertTrue("\(error)".contains("@7"), "\(error)")
+        }
+    }
+
+    /// idb reports hidden controls at `0x0`; their centre is the origin, and a tap there lands
+    /// on whatever is drawn underneath.
+    func testAnElementWithNoAreaIsNotSomethingToTap() throws {
+        let snapshot = try DaemonElementDescriber(client: Self.treeClient())
+            .describeAll(udid: "UDID")
+
+        XCTAssertThrowsError(try TapTarget.identifier("hidden.probe").resolve(in: snapshot)) {
+            XCTAssertEqual(($0 as? ProbeError)?.exitCode, 1)
+            XCTAssertTrue("\($0)".contains("empty frame"), "\($0)")
+        }
+    }
+
+    /// A row scrolled out of view keeps its real coordinates. Tapping them lands on whatever is
+    /// drawn at the clamped edge instead — a different row, silently.
+    func testAnElementOffTheScreenIsRefusedWithTheCoordinatesItWouldHaveTapped() throws {
+        let snapshot = try DaemonElementDescriber(client: Self.treeClient())
+            .describeAll(udid: "UDID")
+
+        XCTAssertThrowsError(try TapTarget.identifier("offscreen.next").resolve(in: snapshot)) {
+            XCTAssertEqual(($0 as? ProbeError)?.exitCode, 1)
+            XCTAssertTrue("\($0)".contains("1226"), "\($0)")
+            XCTAssertTrue("\($0)".contains("scroll it into view"), "\($0)")
+        }
+    }
+
+    /// The whole point of the tap path is that a coordinate target costs no tree, so the guard
+    /// on a bare `x,y` is the one that can be applied without one: off every screen there is.
+    func testANegativeCoordinateIsRefusedAtParseTime() {
+        for text in ["-1,10", "10,-1", "-1,-1"] {
+            XCTAssertThrowsError(try TapTarget.parse(text), text) { error in
+                XCTAssertEqual((error as? ProbeError)?.exitCode, 1, text)
+                XCTAssertTrue("\(error)".contains("off screen"), "\(error)")
+            }
+        }
+        XCTAssertEqual(try TapTarget.parse("0,0"), .point(ElementPoint(x: 0, y: 0)))
+    }
+
     /// The hint has to name the fix, because "no daemon" is not actionable on its own.
     func testAMissingDaemonExitsTwoWithTheStartCommand() {
         let client = FakeDaemonClient.absent(udid: "UDID")
@@ -115,6 +170,35 @@ final class TapCommandTests: XCTestCase {
     }
 
     // MARK: - Harness
+
+    private static func treeClient() -> FakeDaemonClient {
+        FakeDaemonClient(responses: [
+            .tree: DaemonResponse(ok: true, ms: 70, treeJSON: ElementFixture.describeAll)
+        ])
+    }
+
+    /// The fixture's own screen, so an "off screen" assertion means the same thing here as it
+    /// does everywhere else in this suite.
+    private static func snapshot(_ elements: AccessibilityElement...) -> ElementSnapshot {
+        ElementSnapshot(
+            appLabel: ElementFixture.appLabel,
+            screen: ElementFrame(x: 0, y: 0, width: 402, height: 874),
+            elements: elements
+        )
+    }
+
+    private static func element(index: Int, identifier: String, frame: ElementFrame)
+        -> AccessibilityElement
+    {
+        AccessibilityElement(
+            index: index,
+            identifier: identifier,
+            kind: .button,
+            label: "Row",
+            frame: frame,
+            isEnabled: true
+        )
+    }
 
     private struct TapOutput {
         let client: FakeDaemonClient

@@ -68,6 +68,76 @@ final class DaemonRoutingTests: XCTestCase {
         XCTAssertFalse(reply.shouldStop)
     }
 
+    /// A NaN reaches the HID stream as a point the companion answers for seconds later, and a
+    /// negative one lands off screen: both are the caller's arithmetic, not a tap.
+    func testUnusableCoordinatesAreRefusedBeforeTheyReachTheCompanion() async {
+        let actor = FakeIdbActor()
+
+        for request in [
+            DaemonRequest.tap(x: .nan, y: 10),
+            .tap(x: 10, y: .infinity),
+            .tap(x: -1, y: 10),
+            .tap(x: 10, y: -0.5),
+        ] {
+            let reply = await Self.router(actor).reply(to: request)
+
+            XCTAssertFalse(reply.response.ok, "\(request)")
+            XCTAssertEqual(reply.response.kind, "invalidArgument", "\(request)")
+        }
+        let taps = await actor.taps
+        XCTAssertTrue(taps.isEmpty, "nothing may reach the HID stream")
+    }
+
+    func testZeroIsATappablePoint() async {
+        let actor = FakeIdbActor()
+
+        let reply = await Self.router(actor).reply(to: .tap(x: 0, y: 0))
+
+        XCTAssertTrue(reply.response.ok)
+        let taps = await actor.taps
+        XCTAssertEqual(taps, [FakeIdbActor.Tap(x: 0, y: 0)])
+    }
+
+    // MARK: - Before the companion answers
+
+    /// The daemon binds its socket first and reaches the companion afterwards, so that `daemon
+    /// start` can never lose track of a process it spawned. In that window `ping` has to answer
+    /// — and has to say that this is what it is.
+    func testAConnectingDaemonAnswersPingAndSaysSo() async {
+        let reply = await Self.connectingRouter().reply(to: .ping)
+
+        XCTAssertTrue(reply.response.ok)
+        XCTAssertEqual(reply.response.connecting, true)
+        XCTAssertEqual(reply.response.pid, 4_242)
+        XCTAssertFalse(reply.shouldStop)
+    }
+
+    func testAConnectedDaemonDoesNotSayItIsConnecting() async {
+        let reply = await Self.router(FakeIdbActor()).reply(to: .ping)
+
+        XCTAssertNil(reply.response.connecting)
+    }
+
+    func testAConnectingDaemonRefusesWorkItCannotDoYet() async {
+        for request in [DaemonRequest.tree, .tap(x: 1, y: 2)] {
+            let reply = await Self.connectingRouter().reply(to: request)
+
+            XCTAssertFalse(reply.response.ok, "\(request)")
+            XCTAssertEqual(
+                (try? DaemonProtocol.unwrap(reply.response, op: request.op)) == nil, true)
+            XCTAssertTrue("\(reply.response.message ?? "")".contains("connecting"), "\(request)")
+            XCTAssertFalse(reply.shouldStop)
+        }
+    }
+
+    /// Otherwise a slow `idb connect` is an unkillable process.
+    func testAConnectingDaemonCanStillBeStopped() async {
+        let reply = await Self.connectingRouter().reply(to: .stop)
+
+        XCTAssertTrue(reply.response.ok)
+        XCTAssertTrue(reply.shouldStop)
+    }
+
     func testStopIsTheOnlyOperationThatEndsTheLoop() async {
         let reply = await Self.router(FakeIdbActor()).reply(to: .stop)
 
@@ -90,6 +160,16 @@ final class DaemonRoutingTests: XCTestCase {
         XCTAssertEqual(DaemonRouter.milliseconds(since: 0, now: 1_100), 1.1)
         XCTAssertEqual(DaemonRouter.milliseconds(since: 0, now: 512), 0.51)
         XCTAssertEqual(DaemonRouter.milliseconds(since: 100, now: 0), 0)
+    }
+
+    private static func connectingRouter() -> DaemonRouter {
+        DaemonRouter(
+            actor: nil,
+            udid: "UDID",
+            pid: 4_242,
+            ticker: FakeTicker(),
+            startedAtMicroseconds: 0
+        )
     }
 
     private static func router(_ actor: FakeIdbActor, startedAtMicroseconds: Int = 0)

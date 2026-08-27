@@ -73,6 +73,59 @@ final class DaemonProtocolTests: XCTestCase {
         }
     }
 
+    /// The message is the daemon's own, verbatim: it already names the command that failed, and
+    /// wrapping it a second time buries the sentence a caller has to act on.
+    func testAnInvalidArgumentReadsTheSameWayItWouldHaveLocally() {
+        let response = DaemonResponse(
+            ok: false,
+            kind: "invalidArgument",
+            message: "no element #nope on screen; re-read it with: simprobe tree"
+        )
+
+        XCTAssertThrowsError(try DaemonProtocol.unwrap(response, op: .tap)) { error in
+            XCTAssertEqual(
+                error as? ProbeError,
+                .invalidArgument("no element #nope on screen; re-read it with: simprobe tree")
+            )
+        }
+    }
+
+    /// Exit codes are the CLI's contract with the shell, and the daemon is a *transport*: a
+    /// mistyped ref exits 1 through `idb` and must exit 1 through the socket too.
+    func testTheReportedKindKeepsItsExitCodeAcrossTheSocket() {
+        let expected: [(kind: String, code: Int32)] = [
+            ("invalidArgument", 1),
+            ("captureFailed", 5),
+            ("frameFailure", 5),
+            ("imageUnreadable", 5),
+            ("idbFailed", 2),
+            ("simctlFailed", 2),
+            ("somethingThisClientHasNeverHeardOf", 2),
+        ]
+
+        for (kind, code) in expected {
+            let response = DaemonResponse(ok: false, kind: kind, message: "the daemon said no")
+
+            XCTAssertThrowsError(try DaemonProtocol.unwrap(response, op: .tap), kind) { error in
+                XCTAssertEqual((error as? ProbeError)?.exitCode, code, kind)
+                XCTAssertTrue("\(error)".contains("the daemon said no"), "\(error)")
+            }
+        }
+    }
+
+    /// A daemon that has bound its socket but not reached the companion says so on `ping`, and
+    /// says nothing at all once it has.
+    func testTheConnectingFlagRoundTripsAndIsAbsentWhenFalse() throws {
+        let connecting = DaemonResponse(ok: true, pid: 1, udid: "UDID", connecting: true)
+
+        let line = try DaemonProtocol.encode(connecting)
+
+        XCTAssertTrue(line.contains(#""connecting":true"#), line)
+        XCTAssertEqual(try DaemonProtocol.decodeResponse(line), connecting)
+        XCTAssertFalse(
+            try DaemonProtocol.encode(DaemonResponse(ok: true)).contains("connecting"))
+    }
+
     func testUnwrapPassesASuccessThrough() throws {
         let response = DaemonResponse(ok: true, ms: 1.1)
 

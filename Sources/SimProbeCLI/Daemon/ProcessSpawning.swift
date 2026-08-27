@@ -21,17 +21,17 @@ public struct DetachedProcessSpawner: ProcessSpawning {
     public func spawnDetached(_ executable: String, _ arguments: [String], logPath: String) throws
         -> Int32
     {
-        if !FileManager.default.fileExists(atPath: logPath) {
-            FileManager.default.createFile(atPath: logPath, contents: nil)
-        }
+        // `O_NOFOLLOW|O_CREAT|O_APPEND`, mode 0600, rather than `createFile` plus a
+        // `FileHandle`: the log sits in a shared temporary directory, and a symlink planted at
+        // that path would turn the daemon's stdout into an append primitive aimed at whatever
+        // the link names.
+        let descriptor = try SecureFile.openForAppending(atPath: logPath)
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
-        if let handle = FileHandle(forWritingAtPath: logPath) {
-            handle.seekToEndOfFile()
-            process.standardOutput = handle
-            process.standardError = handle
-        }
+        process.standardOutput = handle
+        process.standardError = handle
         // Nothing is ever read from the child's stdin, and leaving it on the terminal would let
         // a backgrounded daemon stop the shell with SIGTTIN.
         process.standardInput = FileHandle.nullDevice
@@ -60,9 +60,48 @@ public enum ProcessIdentity {
         return String(decoding: buffer[0..<Int(length)], as: UTF8.self)
     }
 
-    /// Whether `pid` is a live process running `executable`.
-    public static func isRunning(pid: Int32, executable: String) -> Bool {
-        executablePath(of: pid).map { $0 == executable } ?? false
+    /// What a signallable executable path has to end in.
+    ///
+    /// A second lock on the same door as the pid check: a pidfile whose `executable` has been
+    /// rewritten to `/bin/launchd` names a live process whose path would otherwise match itself.
+    /// Nothing this tool signals is ever anything but its own daemon.
+    public static let daemonSuffix = "/" + DaemonExecutable.name
+
+    /// Whether `pid` is a live process running `executable`, and `executable` is a daemon.
+    ///
+    /// - Parameter mustEndWith: the suffix the recorded path has to carry. Defaulted rather than
+    ///   hard-coded so the check itself can be tested against a process that actually exists.
+    public static func isRunning(
+        pid: Int32,
+        executable: String,
+        mustEndWith suffix: String = daemonSuffix
+    ) -> Bool {
+        guard executable.hasSuffix(suffix) else { return false }
+        return executablePath(of: pid).map { $0 == executable } ?? false
+    }
+}
+
+/// Whether a recorded process is still alive, and asking it to stop — behind a protocol so the
+/// stop sequence can be asserted without a process to kill.
+public protocol ProcessLiveness: Sendable {
+
+    func isRunning(_ record: DaemonRecord) -> Bool
+
+    /// `SIGTERM`, and only ever to a process that still passes `isRunning`.
+    func terminate(_ record: DaemonRecord)
+}
+
+public struct SystemProcessLiveness: ProcessLiveness {
+
+    public init() {}
+
+    public func isRunning(_ record: DaemonRecord) -> Bool {
+        ProcessIdentity.isRunning(pid: record.pid, executable: record.executable)
+    }
+
+    public func terminate(_ record: DaemonRecord) {
+        guard isRunning(record) else { return }
+        kill(record.pid, SIGTERM)
     }
 }
 
@@ -95,5 +134,18 @@ public struct DaemonRecord: Codable, Equatable, Sendable {
     public static func read(from path: String) -> DaemonRecord? {
         guard let data = FileManager.default.contents(atPath: path) else { return nil }
         return try? JSONDecoder().decode(DaemonRecord.self, from: data)
+    }
+
+    /// Removes a pidfile only when it is still *this* process's own.
+    ///
+    /// A daemon that exits removes its pidfile on the way out. Between the two, a second daemon
+    /// may have started and written its own — and deleting that one leaves a live daemon nobody
+    /// can stop. The file says whose it is; that is the whole check.
+    ///
+    /// - Returns: whether the file was removed.
+    @discardableResult
+    public static func removeIfOwned(path: String, pid: Int32) -> Bool {
+        guard read(from: path)?.pid == pid else { return false }
+        return (try? FileManager.default.removeItem(atPath: path)) != nil
     }
 }

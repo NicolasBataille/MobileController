@@ -56,10 +56,20 @@ final class SpawnableDaemonClient: DaemonClient, @unchecked Sendable {
     /// not instantaneous.
     private var pingsBeforeReady: Int
 
-    init(treeJSON: String, pid: Int32 = 4_242, pingsBeforeReady: Int = 0) {
+    /// How many further `ping`s answer `connecting: true`, modelling the window between the
+    /// socket being bound and `idb connect` finishing.
+    private var pingsWhileConnecting: Int
+
+    init(
+        treeJSON: String,
+        pid: Int32 = 4_242,
+        pingsBeforeReady: Int = 0,
+        pingsWhileConnecting: Int = 0
+    ) {
         self.treeJSON = treeJSON
         self.pid = pid
         self.pingsBeforeReady = pingsBeforeReady
+        self.pingsWhileConnecting = pingsWhileConnecting
     }
 
     func markSpawned() {
@@ -78,11 +88,23 @@ final class SpawnableDaemonClient: DaemonClient, @unchecked Sendable {
         lock.lock()
         let up = running && pingsBeforeReady <= 0
         if running, pingsBeforeReady > 0 { pingsBeforeReady -= 1 }
+        var connecting = false
+        if up, pingsWhileConnecting > 0 {
+            pingsWhileConnecting -= 1
+            connecting = true
+        }
         if request.op == .stop { running = false }
         lock.unlock()
         guard up else { throw ProbeError.daemonUnavailable(udid: "UDID") }
         switch request.op {
-        case .ping: return DaemonResponse(ok: true, pid: pid, udid: "UDID", uptimeMs: 1_000)
+        case .ping:
+            return DaemonResponse(
+                ok: true,
+                pid: pid,
+                udid: "UDID",
+                uptimeMs: 1_000,
+                connecting: connecting ? true : nil
+            )
         case .tree: return DaemonResponse(ok: true, ms: 70.0, treeJSON: treeJSON)
         case .tap, .stop: return DaemonResponse(ok: true, ms: 1.1)
         }
@@ -152,6 +174,52 @@ actor FakeIdbActor: IdbActing {
     func treeJSON() async throws -> String {
         if let failure { throw failure }
         return tree
+    }
+}
+
+/// A recorded process that stays alive for a scripted number of checks.
+///
+/// The whole of `stop`'s new behaviour is a *wait*, and a wait is only assertable against
+/// something that eventually stops being true on cue.
+final class FakeProcessLiveness: ProcessLiveness, @unchecked Sendable {
+
+    private let lock = NSLock()
+    private var checksBeforeExit: Int
+    private var terminated: [DaemonRecord] = []
+    private var checks = 0
+
+    /// - Parameter checksBeforeExit: how many `isRunning` calls answer `true`. `Int.max` models
+    ///   a daemon that ignores the stop request entirely.
+    init(checksBeforeExit: Int = 0) {
+        self.checksBeforeExit = checksBeforeExit
+    }
+
+    var terminations: [DaemonRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+        return terminated
+    }
+
+    var checkCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return checks
+    }
+
+    func isRunning(_ record: DaemonRecord) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        checks += 1
+        guard checksBeforeExit > 0 else { return false }
+        if checksBeforeExit != Int.max { checksBeforeExit -= 1 }
+        return true
+    }
+
+    func terminate(_ record: DaemonRecord) {
+        lock.lock()
+        terminated.append(record)
+        checksBeforeExit = 0
+        lock.unlock()
     }
 }
 

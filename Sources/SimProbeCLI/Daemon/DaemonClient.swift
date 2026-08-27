@@ -20,6 +20,16 @@ extension DaemonClient {
     public var isRunning: Bool {
         ((try? send(.ping))?.ok) == true
     }
+
+    /// Whether a daemon answered a `ping` *and* has finished reaching the companion.
+    ///
+    /// The distinction is the whole of the start sequence: the daemon binds its socket first so
+    /// that `start` can never orphan a process it cannot find, which means "answering" arrives
+    /// seconds before "usable".
+    public var isReady: Bool {
+        guard let response = try? send(.ping) else { return false }
+        return response.ok && response.connecting != true
+    }
 }
 
 /// The real one: one `AF_UNIX` connection per request.
@@ -83,15 +93,8 @@ public struct UnixSocketDaemonClient: DaemonClient {
 
     /// Bounds both halves of the exchange, so a wedged daemon fails instead of pinning the CLI.
     private func setTimeouts(on descriptor: Int32) throws {
-        var timeout = timeval(
-            tv_sec: timeoutMs / 1_000,
-            tv_usec: Int32((timeoutMs % 1_000) * 1_000)
-        )
-        let size = socklen_t(MemoryLayout<timeval>.size)
-        for option in [SO_RCVTIMEO, SO_SNDTIMEO] {
-            guard setsockopt(descriptor, SOL_SOCKET, option, &timeout, size) == 0 else {
-                throw ProbeError.idbFailed(command: "daemon", detail: "could not set a timeout")
-            }
+        guard SocketIO.setTimeouts(on: descriptor, ms: timeoutMs) else {
+            throw ProbeError.idbFailed(command: "daemon", detail: "could not set a timeout")
         }
     }
 
@@ -101,31 +104,52 @@ public struct UnixSocketDaemonClient: DaemonClient {
             let written = remaining.withUnsafeBytes { buffer in
                 Darwin.write(descriptor, buffer.baseAddress, buffer.count)
             }
-            guard written > 0 else {
+            switch SocketIO.classify(count: written, errno: errno) {
+            case .bytes(let count):
+                remaining = remaining.dropFirst(count)
+            case .interrupted:
+                continue
+            case .timedOut:
+                throw Self.timedOut(timeoutMs, half: "send")
+            case .closed, .failed:
                 throw ProbeError.idbFailed(command: "daemon", detail: "the socket closed on write")
             }
-            remaining = remaining.dropFirst(written)
         }
     }
 
     /// Reads until the first newline. The response is one line by construction.
+    ///
+    /// The three ways this can end are three different diagnoses: a frame, a daemon that hung up
+    /// without answering, and a daemon that is still holding the connection open with nothing to
+    /// say. Reporting the last two the same way — which is what a bare `count > 0` check does —
+    /// sends whoever reads the message looking for the wrong bug.
     private func readLine(from descriptor: Int32) throws -> String {
-        var accumulated = Data()
+        var accumulator = LineAccumulator(limit: Int.max)
         var buffer = [UInt8](repeating: 0, count: 16 * 1_024)
         while true {
             let count = Darwin.read(descriptor, &buffer, buffer.count)
-            guard count > 0 else {
-                guard !accumulated.isEmpty else {
+            switch SocketIO.classify(count: count, errno: errno) {
+            case .bytes(let read):
+                if case .complete(let line) = accumulator.append(buffer[0..<read]) { return line }
+            case .interrupted:
+                continue
+            case .timedOut:
+                throw Self.timedOut(timeoutMs, half: "answer")
+            case .closed, .failed:
+                guard !accumulator.isEmpty else {
                     throw ProbeError.idbFailed(
                         command: "daemon",
                         detail: "the daemon closed the connection without answering"
                     )
                 }
-                break
+                return accumulator.text
             }
-            accumulated.append(contentsOf: buffer[0..<count])
-            if accumulated.last == DaemonProtocol.terminator { break }
         }
-        return String(decoding: accumulated, as: UTF8.self)
+    }
+
+    /// The message a wedged daemon produces, which has to name the wait: "no answer" and "no
+    /// answer *after thirty seconds*" send a reader to different places.
+    static func timedOut(_ ms: Int, half: String) -> ProbeError {
+        .idbFailed(command: "daemon", detail: "the daemon timed out after \(ms) ms on \(half)")
     }
 }

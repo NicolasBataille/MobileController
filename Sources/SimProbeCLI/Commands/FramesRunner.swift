@@ -13,13 +13,18 @@ public struct ElementPoint: Equatable, Sendable {
 
     /// Parses `x,y`.
     ///
-    /// - Throws: `ProbeError.invalidArgument` (exit 1). Two integers separated by one comma,
-    ///   and nothing else: a silently mis-parsed coordinate would describe the wrong element
-    ///   with no sign that anything went wrong.
+    /// - Throws: `ProbeError.invalidArgument` (exit 1). Two non-negative integers separated by
+    ///   one comma, and nothing else: a silently mis-parsed coordinate would describe the wrong
+    ///   element with no sign that anything went wrong, and a negative one is off every screen
+    ///   there is — which the HID stream will happily accept and quietly clamp.
     public static func parse(_ text: String) throws -> ElementPoint {
         let parts = text.split(separator: ",", omittingEmptySubsequences: false)
         guard parts.count == 2, let x = Int(parts[0]), let y = Int(parts[1]) else {
             throw ProbeError.invalidArgument("--point takes 'x,y' in points, got '\(text)'")
+        }
+        guard x >= 0, y >= 0 else {
+            throw ProbeError.invalidArgument(
+                "(\(x),\(y)) is off screen: coordinates are in points from the top left")
         }
         return ElementPoint(x: x, y: y)
     }

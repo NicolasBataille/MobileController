@@ -82,6 +82,14 @@ public struct DaemonLauncher {
     private let clock: any ProbeClock
     private let capture: any ScreenCapturing
     private let executable: String
+    private let liveness: any ProcessLiveness
+
+    /// How long `stop` waits for the daemon to actually exit before insisting with `SIGTERM`.
+    ///
+    /// Five seconds: a daemon mid-`accessibility_info` finishes the call before it notices the
+    /// stop, and a client that returns while the old process still holds the socket is exactly
+    /// the race that makes the next `start` fail on an address already in use.
+    public static let stopTimeoutMs = 5_000
 
     public init(
         paths: DaemonPaths,
@@ -89,7 +97,8 @@ public struct DaemonLauncher {
         spawner: any ProcessSpawning,
         clock: any ProbeClock,
         capture: any ScreenCapturing,
-        executable: String
+        executable: String,
+        liveness: any ProcessLiveness = SystemProcessLiveness()
     ) {
         self.paths = paths
         self.client = client
@@ -97,6 +106,7 @@ public struct DaemonLauncher {
         self.clock = clock
         self.capture = capture
         self.executable = executable
+        self.liveness = liveness
     }
 
     /// Spawns a daemon if none is listening, waits for it, and smoke-tests it.
@@ -118,8 +128,11 @@ public struct DaemonLauncher {
                 ],
                 logPath: paths.log(udid: options.udid)
             )
-            try waitUntilReady(options)
         }
+        // Waited for in both branches. A daemon binds its socket before it reaches the
+        // companion, so an answered `ping` means "there is a process", not "there is a warm
+        // channel" — and a daemon someone else started a second ago is in exactly that state.
+        try waitUntilReady(options)
         let elements = try smokeTest(udid: options.udid)
         return DaemonStartReport(
             udid: options.udid,
@@ -129,25 +142,47 @@ public struct DaemonLauncher {
         )
     }
 
-    /// Asks the daemon to exit, falling back to its own pidfile.
+    /// Asks the daemon to exit, waits for it to actually go, and falls back to its pidfile.
+    ///
+    /// `stop` returning while the process is still alive is what made `stop; start` fail: the
+    /// old daemon still owned the socket, and the new one unlinked and rebound it underneath
+    /// its own successor. So the answer to the `stop` request is only the beginning — what
+    /// makes this true is the pid being gone.
+    ///
+    /// The pidfile is removed **last**, after the process is confirmed gone, because until then
+    /// it is the only handle anyone has on a daemon that did not listen.
     ///
     /// - Returns: whether anything was running to stop.
     public func stop(udid: String) throws -> Bool {
+        let record = DaemonRecord.read(from: paths.pidFile(udid: udid))
         if client.isRunning {
             _ = try? client.send(.stop)
+            record.map(waitForExit)
             removePidFile(udid: udid)
             return true
         }
-        guard let record = DaemonRecord.read(from: paths.pidFile(udid: udid)) else { return false }
+        guard let record else { return false }
         // The only process simprobe ever signals: one its own daemon wrote down, still running,
-        // and still the same executable. A recycled pid fails this and is left alone.
-        guard ProcessIdentity.isRunning(pid: record.pid, executable: record.executable) else {
+        // still the same executable, and still named `simprobe-daemon`. A recycled pid fails
+        // this and is left alone.
+        guard liveness.isRunning(record) else {
             removePidFile(udid: udid)
             return false
         }
-        kill(record.pid, SIGTERM)
+        liveness.terminate(record)
+        waitForExit(record)
         removePidFile(udid: udid)
         return true
+    }
+
+    /// Polls until the recorded process is gone, insisting with `SIGTERM` at the deadline.
+    private func waitForExit(_ record: DaemonRecord) {
+        let deadline = clock.nowMs + Self.stopTimeoutMs
+        while clock.nowMs < deadline {
+            guard liveness.isRunning(record) else { return }
+            clock.sleep(ms: DaemonLaunchOptions.readyPollIntervalMs)
+        }
+        liveness.terminate(record)
     }
 
     public func status(udid: String) -> DaemonStatus {
@@ -162,7 +197,7 @@ public struct DaemonLauncher {
     private func waitUntilReady(_ options: DaemonLaunchOptions) throws {
         let deadline = clock.nowMs + options.readyTimeoutMs
         while clock.nowMs < deadline {
-            if client.isRunning { return }
+            if client.isReady { return }
             clock.sleep(ms: DaemonLaunchOptions.readyPollIntervalMs)
         }
         throw ProbeError.idbFailed(
