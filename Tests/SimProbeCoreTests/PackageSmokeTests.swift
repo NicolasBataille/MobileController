@@ -4,6 +4,6 @@ import XCTest
 
 final class PackageSmokeTests: XCTestCase {
     func testCoreModuleIsImportable() {
-        XCTAssertEqual(SimProbeCore.version, "0.2.0")
+        XCTAssertEqual(SimProbeCore.version, "0.3.0")
     }
 }

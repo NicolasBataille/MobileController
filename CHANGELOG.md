@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
-## [Unreleased]
+## [0.3.0] — 2026-08-27
 
 ### Added
 - **The warm action daemon.** `simprobe-daemon` holds one gRPC connection to `idb_companion` open,
@@ -39,6 +39,16 @@ All notable changes to this project are documented here. The format follows
   effect at the next `scripts/bump-formula.sh` tag; the pinned v0.2.0 tarball predates it.
 - `skill/SKILL.md` gains a "fast action path" paragraph and loses redundancy elsewhere to stay
   within its line budget.
+
+### Security / hardening (from the pre-release reviews)
+- Daemon: 20 s deadline on every companion RPC; accepted connections get 10 s socket timeouts
+  and a 64 KB request cap; the socket is bound (answering `ping {"connecting":true}`) before the
+  possibly slow `idb connect`, and the daemon exits by itself if the companion never answers.
+- Socket directory, socket, pidfile and log are created 0700/0600 with symlink and ownership
+  checks (`O_NOFOLLOW`); sockets and pidfiles are only unlinked when they are ours; `daemon stop`
+  waits for the process to exit (SIGTERM after 5 s) and removes the pidfile last.
+- `tap` rejects duplicate `#id` matches, empty frames, centres outside the screen and non-finite
+  coordinates; daemon error kinds map back to the documented exit codes.
 
 ## [0.2.0] — 2026-08-27
 
@@ -98,5 +108,6 @@ First public alpha, measured on Xcode 26.6 / iOS 26.5 with agent-device 0.20.10.
 - Pinned to agent-device 0.20.10; see README "Known upstream limitations".
 - `wait-stable` needs ≥ 3 captures (~1.5–4 s) with default `--quiet-polls 3`.
 
+[0.3.0]: https://github.com/NicolasBataille/MobileController/releases/tag/v0.3.0
 [0.2.0]: https://github.com/NicolasBataille/MobileController/releases/tag/v0.2.0
 [0.1.0]: https://github.com/NicolasBataille/MobileController/releases/tag/v0.1.0
