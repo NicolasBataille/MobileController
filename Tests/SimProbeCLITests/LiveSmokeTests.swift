@@ -122,7 +122,90 @@ final class LiveSmokeTests: XCTestCase {
         XCTAssertTrue(output.outLines.contains { $0.hasPrefix("  ") }, output.out)
     }
 
+    /// The whole warm path against a real simulator: start, read a tree, land a tap, stop.
+    ///
+    /// The only exercise the gRPC layer ever gets. Everything below `IdbActing` — the channel,
+    /// the HID stream, the accessibility RPC, the companion's own connect — is unfakeable by
+    /// construction, so this is the test that says the daemon works at all.
+    ///
+    /// Runs in a directory of its own so it can never stop, reuse or outlive a daemon the
+    /// developer started by hand.
+    func testLiveDaemonStartTapTreeStop() throws {
+        let context = try liveContext()
+        let executable = try daemonExecutable()
+        let paths = DaemonPaths(
+            base: URL(fileURLWithPath: "/var/tmp/sp-live-\(UUID().uuidString.prefix(8))"))
+        let client = UnixSocketDaemonClient(
+            path: paths.socket(udid: context.udid), udid: context.udid)
+        let launcher = DaemonLauncher(
+            paths: paths,
+            client: client,
+            spawner: DetachedProcessSpawner(),
+            clock: SystemClock(),
+            capture: SimctlScreenCapture(simctl: context.simctl),
+            executable: executable
+        )
+        // Even on a failed assertion: a daemon left holding a gRPC channel to the simulator is
+        // exactly the leak this suite must not cause. The teardown talks to the socket directly
+        // rather than through the launcher, which is not `Sendable` and need not become so for
+        // the sake of a cleanup block.
+        let socketPath = paths.socket(udid: context.udid)
+        let udid = context.udid
+        let directory = paths.directory
+        addTeardownBlock {
+            _ = try? UnixSocketDaemonClient(path: socketPath, udid: udid).send(.stop)
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let report = try launcher.start(DaemonLaunchOptions(udid: context.udid))
+
+        // The smoke test is both halves: a tree with something in it, and a `simctl` capture.
+        XCTAssertGreaterThanOrEqual(report.elementCount, 1)
+        XCTAssertFalse(report.wasAlreadyRunning)
+        XCTAssertEqual(launcher.status(udid: context.udid).isRunning, true)
+
+        let snapshot = try DaemonElementDescriber(client: client).describeAll(udid: context.udid)
+        XCTAssertFalse(snapshot.elements.isEmpty)
+        XCTAssertGreaterThan(snapshot.screen.width, 0)
+        // The payload really is the shape `frames` parses: refs, not just rectangles.
+        XCTAssertTrue(snapshot.elements.contains { $0.identifier != nil }, "no element had a ref")
+
+        // The top-left corner rather than an element: a live test must not navigate the app out
+        // from under whatever else is looking at this simulator, and the HID path is the same.
+        let tapped = try client.call(.tap(x: 2, y: 2))
+        XCTAssertTrue(tapped.ok)
+        XCTAssertNotNil(tapped.ms)
+        // Still serving afterwards, which is the property a warm daemon exists for.
+        XCTAssertFalse(
+            try DaemonElementDescriber(client: client).describeAll(udid: context.udid)
+                .elements.isEmpty)
+
+        XCTAssertTrue(try launcher.stop(udid: context.udid))
+        XCTAssertFalse(launcher.status(udid: context.udid).isRunning)
+
+        // A stopped daemon leaves its socket file behind; starting again must unlink and rebind
+        // it rather than fail on an address already in use.
+        XCTAssertGreaterThanOrEqual(
+            try launcher.start(DaemonLaunchOptions(udid: context.udid)).elementCount, 1)
+        XCTAssertTrue(try launcher.stop(udid: context.udid))
+    }
+
     // MARK: Harness
+
+    /// `simprobe-daemon` as built beside the test bundle.
+    ///
+    /// Not `DaemonExecutable.locate()`: that looks beside the *running* executable, which under
+    /// the test runner is inside the `.xctest` bundle rather than in `.build/debug`.
+    private func daemonExecutable() throws -> String {
+        let candidate = Bundle(for: type(of: self)).bundleURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(DaemonExecutable.name)
+            .path
+        guard FileManager.default.isExecutableFile(atPath: candidate) else {
+            throw XCTSkip("build the daemon first: swift build --product simprobe-daemon")
+        }
+        return candidate
+    }
 
     private func idbPath() throws -> String {
         guard let idb = try? Idb.locate() else {
