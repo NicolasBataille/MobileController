@@ -122,7 +122,7 @@ final class LiveSmokeTests: XCTestCase {
         XCTAssertTrue(output.outLines.contains { $0.hasPrefix("  ") }, output.out)
     }
 
-    /// The whole warm path against a real simulator: start, read a tree, land a tap, stop.
+    /// The whole warm path against a real simulator: start, read a tree, stop, start again.
     ///
     /// The only exercise the gRPC layer ever gets. Everything below `IdbActing` — the channel,
     /// the HID stream, the accessibility RPC, the companion's own connect — is unfakeable by
@@ -130,22 +130,149 @@ final class LiveSmokeTests: XCTestCase {
     ///
     /// Runs in a directory of its own so it can never stop, reuse or outlive a daemon the
     /// developer started by hand.
-    func testLiveDaemonStartTapTreeStop() throws {
+    func testLiveDaemonStartTreeStop() throws {
         let context = try liveContext()
+        let daemon = try daemonHarness(context)
+        let scale = try context.session.displayMetrics.scale(udid: context.udid)
+        let captured = try SimctlScreenCapture(simctl: context.simctl).capture(udid: context.udid)
+
+        let report = try daemon.launcher.start(DaemonLaunchOptions(udid: context.udid))
+
+        // The smoke test is both halves: a tree with something in it, and a `simctl` capture.
+        XCTAssertGreaterThanOrEqual(report.elementCount, 1)
+        XCTAssertFalse(report.wasAlreadyRunning)
+        XCTAssertEqual(daemon.launcher.status(udid: context.udid).isRunning, true)
+
+        let snapshot = try daemon.describer.describeAll(udid: context.udid)
+        XCTAssertFalse(snapshot.elements.isEmpty)
+        // The property the whole coordinate contract rests on: the daemon's tree is in the same
+        // logical points `shot` writes and `tap` takes, not in framebuffer pixels. A daemon that
+        // reported a 1206-point-wide screen would place every tap on a 402-point one.
+        XCTAssertEqual(snapshot.screen.width, Int((Double(captured.width) / scale).rounded()))
+        // The payload really is the shape `frames` parses: refs, not just rectangles.
+        XCTAssertTrue(snapshot.elements.contains { $0.identifier != nil }, "no element had a ref")
+
+        XCTAssertTrue(try daemon.launcher.stop(udid: context.udid))
+        XCTAssertFalse(daemon.launcher.status(udid: context.udid).isRunning)
+
+        // A stopped daemon leaves its socket file behind; starting again must unlink and rebind
+        // it rather than fail on an address already in use. `stop` waits for the process to
+        // actually exit, which is what makes this pair deterministic rather than a race.
+        XCTAssertGreaterThanOrEqual(
+            try daemon.launcher.start(DaemonLaunchOptions(udid: context.udid)).elementCount, 1)
+        XCTAssertTrue(try daemon.launcher.stop(udid: context.udid))
+    }
+
+    /// A tap that is actually meant to land: a resolved element centre, and the navigation it
+    /// causes read back off the tree.
+    ///
+    /// A corner tap proves the HID stream carries bytes and nothing else — it lands on whatever
+    /// happens to be at (2,2), and a daemon that silently halved every coordinate would pass it.
+    /// This taps the centre of a ref, then requires the screen to have *changed into* something
+    /// with a back control, then presses that and requires the row to come back. Settings' own
+    /// General row because it is stable across iOS versions, harmless, and reversible; the test
+    /// leaves the simulator exactly where it found it.
+    func testLiveDaemonTapNavigatesToTheElementItResolved() throws {
+        let context = try liveContext()
+        let daemon = try daemonHarness(context)
+        _ = try daemon.launcher.start(DaemonLaunchOptions(udid: context.udid))
+
+        let before = try daemon.describer.describeAll(udid: context.udid)
+        let target = TapTarget.identifier(Self.settingsGeneralRow)
+        try XCTSkipUnless(
+            (try? target.resolve(in: before)) != nil,
+            "open Settings on the simulator: this test taps \(Self.settingsGeneralRow)"
+        )
+        let row = try target.resolve(in: before)
+
+        let tapped = try daemon.client.call(
+            .tap(x: Double(row.frame.centre.x), y: Double(row.frame.centre.y)))
+
+        XCTAssertTrue(tapped.ok)
+        XCTAssertNotNil(tapped.ms)
+        let pushed = try waitForSettledTree(
+            differingFrom: before,
+            through: daemon.describer,
+            udid: context.udid,
+            what: "the pushed screen"
+        )
+        // A pushed screen has a back control in its navigation bar. Found by geometry rather
+        // than by label, because the simulator's language is not this test's business.
+        let back = try XCTUnwrap(
+            Self.backControl(in: pushed),
+            "tapping \(row.ref) changed the screen but produced no back control"
+        )
+        XCTAssertNil(try? target.resolve(in: pushed), "the row is still on screen; nothing moved")
+
+        _ = try daemon.client.call(
+            .tap(x: Double(back.frame.centre.x), y: Double(back.frame.centre.y)))
+
+        let restored = try waitForSettledTree(
+            differingFrom: pushed,
+            through: daemon.describer,
+            udid: context.udid,
+            what: "Settings' root"
+        )
+        XCTAssertNotNil(try? target.resolve(in: restored), "the back tap did not restore the list")
+        XCTAssertTrue(try daemon.launcher.stop(udid: context.udid))
+    }
+
+    // MARK: Harness
+
+    /// The row every iOS Settings app has had for a decade, and one that pushes rather than
+    /// toggling anything.
+    private static let settingsGeneralRow = "com.apple.settings.general"
+
+    /// The back control of a pushed navigation bar, by position: a button in the top band, on
+    /// the left, with something to hit.
+    private static func backControl(in snapshot: ElementSnapshot) -> AccessibilityElement? {
+        snapshot.elements
+            .filter { $0.kind == .button && $0.isEnabled && !$0.frame.isEmpty }
+            .filter { $0.frame.y < 120 && $0.frame.x < snapshot.screen.width / 4 }
+            .min { $0.frame.y < $1.frame.y }
+    }
+
+    /// Polls until the tree is *both* different from the one we started from and the same as
+    /// the reading before it.
+    ///
+    /// "Different" alone is not navigation. A push animates, and a tree read mid-animation is
+    /// neither screen: the first live run of this test caught Settings' own list at `x: -112`,
+    /// sliding out, with the row it had just tapped still in it. Two equal readings is the
+    /// cheapest statement of "the transition is over" that does not involve a screenshot.
+    private func waitForSettledTree(
+        differingFrom previous: ElementSnapshot,
+        through describer: DaemonElementDescriber,
+        udid: String,
+        what: String
+    ) throws -> ElementSnapshot {
+        let deadline = Date().addingTimeInterval(10)
+        var last: ElementSnapshot?
+        while Date() < deadline {
+            let latest = try describer.describeAll(udid: udid)
+            if Self.differs(latest, from: previous), let last, !Self.differs(latest, from: last) {
+                return latest
+            }
+            last = latest
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        throw XCTSkip("the screen never settled on \(what); the simulator may be busy")
+    }
+
+    /// Two trees are the same screen when they carry the same refs at the same places. The
+    /// frames matter: a list sliding out of view keeps every ref it had.
+    private static func differs(_ one: ElementSnapshot, from other: ElementSnapshot) -> Bool {
+        one.elements.map { "\($0.ref)\($0.frame.summary)" }
+            != other.elements.map { "\($0.ref)\($0.frame.summary)" }
+    }
+
+    /// One daemon of its own, in a directory of its own, stopped whatever happens.
+    private func daemonHarness(_ context: LiveContext) throws -> DaemonHarness {
         let executable = try daemonExecutable()
         let base = URL(
             fileURLWithPath: "/var/tmp/sp-live-\(UUID().uuidString.prefix(8))", isDirectory: true)
         let paths = DaemonPaths(base: base)
         let client = UnixSocketDaemonClient(
             path: paths.socket(udid: context.udid), udid: context.udid)
-        let launcher = DaemonLauncher(
-            paths: paths,
-            client: client,
-            spawner: DetachedProcessSpawner(),
-            clock: SystemClock(),
-            capture: SimctlScreenCapture(simctl: context.simctl),
-            executable: executable
-        )
         // Even on a failed assertion: a daemon left holding a gRPC channel to the simulator is
         // exactly the leak this suite must not cause. The teardown talks to the socket directly
         // rather than through the launcher, which is not `Sendable` and need not become so for
@@ -157,41 +284,25 @@ final class LiveSmokeTests: XCTestCase {
             // The base, not just the socket directory inside it: a live run must litter nothing.
             try? FileManager.default.removeItem(at: base)
         }
-
-        let report = try launcher.start(DaemonLaunchOptions(udid: context.udid))
-
-        // The smoke test is both halves: a tree with something in it, and a `simctl` capture.
-        XCTAssertGreaterThanOrEqual(report.elementCount, 1)
-        XCTAssertFalse(report.wasAlreadyRunning)
-        XCTAssertEqual(launcher.status(udid: context.udid).isRunning, true)
-
-        let snapshot = try DaemonElementDescriber(client: client).describeAll(udid: context.udid)
-        XCTAssertFalse(snapshot.elements.isEmpty)
-        XCTAssertGreaterThan(snapshot.screen.width, 0)
-        // The payload really is the shape `frames` parses: refs, not just rectangles.
-        XCTAssertTrue(snapshot.elements.contains { $0.identifier != nil }, "no element had a ref")
-
-        // The top-left corner rather than an element: a live test must not navigate the app out
-        // from under whatever else is looking at this simulator, and the HID path is the same.
-        let tapped = try client.call(.tap(x: 2, y: 2))
-        XCTAssertTrue(tapped.ok)
-        XCTAssertNotNil(tapped.ms)
-        // Still serving afterwards, which is the property a warm daemon exists for.
-        XCTAssertFalse(
-            try DaemonElementDescriber(client: client).describeAll(udid: context.udid)
-                .elements.isEmpty)
-
-        XCTAssertTrue(try launcher.stop(udid: context.udid))
-        XCTAssertFalse(launcher.status(udid: context.udid).isRunning)
-
-        // A stopped daemon leaves its socket file behind; starting again must unlink and rebind
-        // it rather than fail on an address already in use.
-        XCTAssertGreaterThanOrEqual(
-            try launcher.start(DaemonLaunchOptions(udid: context.udid)).elementCount, 1)
-        XCTAssertTrue(try launcher.stop(udid: context.udid))
+        return DaemonHarness(
+            client: client,
+            launcher: DaemonLauncher(
+                paths: paths,
+                client: client,
+                spawner: DetachedProcessSpawner(),
+                clock: SystemClock(),
+                capture: SimctlScreenCapture(simctl: context.simctl),
+                executable: executable
+            )
+        )
     }
 
-    // MARK: Harness
+    private struct DaemonHarness {
+        let client: UnixSocketDaemonClient
+        let launcher: DaemonLauncher
+
+        var describer: DaemonElementDescriber { DaemonElementDescriber(client: client) }
+    }
 
     /// `simprobe-daemon` as built beside the test bundle.
     ///
