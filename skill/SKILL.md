@@ -8,8 +8,10 @@ description: Drive and observe an iOS Simulator from Bash at minimum token cost 
 Verified against exactly one triple: **agent-device 0.20.10 / Xcode 26.6 / iOS 26.5**.
 If any of those drifts, re-run `bench/run.sh` before trusting a number below.
 An optional patched build (`0.20.11-mc.1`, see the project README) fixes four of the limitations
-called out here; every rule below is written for the pinned 0.20.10 and stays correct on both.
-Check which one you have with `agent-device --version` before you trust a "this is rejected".
+called out here. Every *rule* below holds on both builds; the **byte costs do not**. On
+`0.20.11-mc.1` the rung-1 digest was measured at 1515 B on a screen where 0.20.10 returned 447 B —
+larger than rung 2 — so measure the two against each other before assuming rung 1 is cheaper.
+Check which build you have with `agent-device --version`.
 
 Two binaries, both driven from **Bash**. Never as an MCP server.
 - `agent-device` — accessibility tree, actions, sessions.
@@ -23,7 +25,7 @@ Start at the cheapest rung. Step up **only** when the rung below cannot answer t
 
 | Rung | Command | Cost | Use when |
 |---|---|---|---|
-| 1 | `agent-device snapshot -i --level digest --json` | ~510 B (~128 tok) | Default. Ref + label of every interactive element. |
+| 1 | `agent-device snapshot -i --level digest --json` | ~510 B (~128 tok) at 0.20.10; **~1.5 KB on 0.20.11-mc.1** — measure it | Default. Ref + label of every interactive element. |
 | 2 | `agent-device snapshot -i` | ~1.3 KB (~325 tok) | The digest has no ref matching your target. |
 | 3 | `agent-device snapshot` | ~2.3 KB (~570 tok) | Structure questions: nesting, containers, non-interactive text. |
 | 4 | `simprobe frames --interactive` | ~1.3 KB (~330 tok), 1.5-9 s | **Where** something is. The snapshot has no coordinates at any rung; this is the only rung that gives refs *and* 1x frames. |

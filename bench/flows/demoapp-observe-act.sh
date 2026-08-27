@@ -30,7 +30,7 @@ export BENCH_FLOW BENCH_SESSION
 # shellcheck disable=SC2034  # read out of this file by bench/flows/test.sh
 BENCH_DEMOAPP_ONESHOT_STEPS="open"
 # shellcheck disable=SC2034  # read out of this file by bench/flows/test.sh
-BENCH_DEMOAPP_REPEAT_STEPS="tab_list wait_stable_list interactive_snapshot tab_form wait_stable_form fill_textfield get_echo is_echo_text press_clear wait_stable_clear get_echo_cleared dismiss_keyboard tab_home wait_stable_home press_animate_motion"
+BENCH_DEMOAPP_REPEAT_STEPS="tab_list wait_stable_list interactive_snapshot tab_form wait_stable_form fill_textfield get_echo get_echo_value press_clear wait_stable_clear get_echo_cleared dismiss_keyboard tab_home wait_stable_home press_animate_motion"
 
 # The identifiers are DemoApp's public contract (DemoApp/README.md).
 DEMOAPP_BUNDLE_ID="dev.mobilecontroller.demoapp"
@@ -63,6 +63,34 @@ demoapp_expect() {
   fi
   if ! LC_ALL=C grep -Fq -- "$needle" "$BENCH_LAST_STDOUT_FILE"; then
     echo "bench: $what - expected [$needle] in $BENCH_LAST_STDOUT_FILE, got:" >&2
+    LC_ALL=C head -c 400 "$BENCH_LAST_STDOUT_FILE" >&2
+    echo >&2
+    DEMOAPP_EXPECT_FAILURES=$((DEMOAPP_EXPECT_FAILURES + 1))
+  fi
+  return 0
+}
+
+# demoapp_expect_attr_value <expected> <what> - assert the last step's stdout is
+# an attribute map whose `value` is exactly <expected>.
+#
+# Stricter than demoapp_expect on purpose: `get attrs` prints the label as well
+# as the value, so a substring match would pass on the wrong field - which is
+# the exact mistake the `is text` step used to make.
+demoapp_expect_attr_value() {
+  local expected="$1"
+  local what="$2"
+
+  if bench_is_dry_run; then
+    return 0
+  fi
+  if [ ! -f "${BENCH_LAST_STDOUT_FILE:-}" ]; then
+    echo "bench: $what - no stdout captured for the previous step" >&2
+    DEMOAPP_EXPECT_FAILURES=$((DEMOAPP_EXPECT_FAILURES + 1))
+    return 0
+  fi
+  if ! LC_ALL=C grep -Eq "\"value\"[[:space:]]*:[[:space:]]*\"$expected\"" \
+    "$BENCH_LAST_STDOUT_FILE"; then
+    echo "bench: $what - expected value [$expected] in $BENCH_LAST_STDOUT_FILE, got:" >&2
     LC_ALL=C head -c 400 "$BENCH_LAST_STDOUT_FILE" >&2
     echo >&2
     DEMOAPP_EXPECT_FAILURES=$((DEMOAPP_EXPECT_FAILURES + 1))
@@ -117,7 +145,13 @@ while [ "$r" -le "$BENCH_REPEAT" ]; do
   # `value`. Reading the wrong one passes silently on an empty field.
   bench_run_step "r$r-get_echo" ad get attrs "id=form.echoLabel"
   demoapp_expect "$DEMOAPP_FILL_TEXT" "echo label after fill"
-  bench_run_step "r$r-is_echo_text" ad is text "id=form.echoLabel" "$DEMOAPP_FILL_TEXT"
+  # Was `ad is text id=form.echoLabel example.com` until 2026-08-27. `is text`
+  # compares against the accessibility *label* ("Echo"), never the value, so the
+  # step asserted something that is false by construction and exited 1. The
+  # assertion it was meant to make is on the `value` attribute, so it reads the
+  # attribute map and matches `value` exactly.
+  bench_run_step "r$r-get_echo_value" ad get attrs "id=form.echoLabel"
+  demoapp_expect_attr_value "$DEMOAPP_FILL_TEXT" "echo label value after fill"
 
   # agent-device has no clear-field primitive (`fill ""` is rejected), so the
   # sanctioned path is the app's own clear button.

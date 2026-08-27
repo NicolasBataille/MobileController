@@ -49,6 +49,14 @@ so a correct timeline is one or two non-zero samples and then quiet:
 t=219 0.16, 453 20.04, 687 15.26, 917 0.04, 1151 0.00, 1377 0.00, 1597 0.00
 ```
 
+The step that reads the echo label back was called `is_echo_text` and ran
+`agent-device is text id=form.echoLabel example.com` until 2026-08-27. It always
+exited 1: `is text` compares against the accessibility **label**, which is
+`Echo`, while the echoed text lives in the `value` attribute. It is now
+`get_echo_value`, running `agent-device get attrs id=form.echoLabel` and
+matching `value` exactly - the assertion the old tag was reaching for. A run
+recorded before that date has the old tag and a `1` in `exit_code` on that row.
+
 The tap is issued in the background inside that step on purpose. A foreground
 `press` returns only once the in-simulator runner has acknowledged it, one to
 one and a half seconds later, by which point a 300 ms transition is long over:
