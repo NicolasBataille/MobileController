@@ -41,7 +41,7 @@ let package = Package(
                 "SimProbeCLI",
                 .product(name: "GRPCCore", package: "grpc-swift-2"),
                 .product(name: "GRPCProtobuf", package: "grpc-swift-protobuf"),
-                .product(name: "GRPCNIOTransportHTTP2", package: "grpc-swift-nio-transport"),
+                .product(name: "GRPCNIOTransportHTTP2Posix", package: "grpc-swift-nio-transport"),
             ]
         ),
         .testTarget(name: "SimProbeCoreTests", dependencies: ["SimProbeCore"]),

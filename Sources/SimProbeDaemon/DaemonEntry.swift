@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 import GRPCCore
-import GRPCNIOTransportHTTP2
+import GRPCNIOTransportHTTP2Posix
 import SimProbeCLI
 
 /// The daemon's life: bind, answer, connect, serve until told to stop or until nobody has asked

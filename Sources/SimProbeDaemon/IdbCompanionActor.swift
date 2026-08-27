@@ -1,6 +1,6 @@
 import Foundation
 import GRPCCore
-import GRPCNIOTransportHTTP2
+import GRPCNIOTransportHTTP2Posix
 import SimProbeCLI
 
 /// The gRPC half of the daemon: the only file in this repository that talks to `idb_companion`.
