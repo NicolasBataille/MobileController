@@ -15,6 +15,9 @@ public struct SimProbe: ParsableCommand {
             FramesCommand.self,
             DevicesCommand.self,
             DiffCommand.self,
+            DaemonCommand.self,
+            TapCommand.self,
+            TreeCommand.self,
         ]
     )
 

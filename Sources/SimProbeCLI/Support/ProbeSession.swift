@@ -32,6 +32,13 @@ public struct ProbeSession {
         ProbeEnvironment.live(simctl: simctl, output: output)
     }
 
+    /// The warm-daemon launcher for a simulator, wired to the same `simctl` this session
+    /// resolved: the smoke test's screenshot must go through exactly the capture every other
+    /// verb uses, or it proves nothing about them.
+    public func daemonLauncher(for daemon: DaemonSession) throws -> DaemonLauncher {
+        try daemon.launcher(simctl: simctl)
+    }
+
     public var displayMetrics: any DisplayMetricsProviding {
         SimctlDisplayMetrics(simctl: simctl)
     }
