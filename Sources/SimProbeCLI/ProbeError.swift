@@ -6,7 +6,7 @@
 /// | Code | Meaning |
 /// |---:|---|
 /// | 1 | Usage / invalid arguments |
-/// | 2 | Environment: `simctl` or `idb` missing or failing, no booted simulator, ambiguous UDID |
+/// | 2 | Environment: `simctl` or `idb` missing or failing, no booted simulator, ambiguous UDID, no daemon |
 /// | 5 | Capture or decode failure |
 ///
 /// Codes 3 (`wait-stable` timed out) and 4 (`diff` exceeded tolerance) are deliberately absent:
@@ -49,13 +49,21 @@ public enum ProbeError: Error, Equatable, Sendable {
     /// `idb` ran and reported a failure, or answered with something unparseable.
     case idbFailed(command: String, detail: String)
 
+    /// No warm daemon is listening for this simulator.
+    ///
+    /// Deliberately not an autostart: the first daemon start pays an `idb connect` and a smoke
+    /// test, and hiding several seconds of that inside what the caller wrote as a tap would make
+    /// one tap in a loop mysteriously slow. Saying so, with the command that fixes it, is
+    /// cheaper to act on than a silent wait.
+    case daemonUnavailable(udid: String)
+
     /// The process exit status this error produces.
     public var exitCode: Int32 {
         switch self {
         case .invalidArgument:
             return 1
         case .simctlUnavailable, .simctlFailed, .noBootedDevice, .ambiguousDevice,
-            .deviceNotFound, .dependencyMissing, .idbFailed:
+            .deviceNotFound, .dependencyMissing, .idbFailed, .daemonUnavailable:
             return 2
         case .captureFailed, .frameFailure, .imageUnreadable:
             return 5
@@ -76,6 +84,7 @@ public enum ProbeError: Error, Equatable, Sendable {
         case .imageUnreadable: return "imageUnreadable"
         case .dependencyMissing: return "dependencyMissing"
         case .idbFailed: return "idbFailed"
+        case .daemonUnavailable: return "daemonUnavailable"
         }
     }
 }
@@ -107,6 +116,9 @@ extension ProbeError: CustomStringConvertible {
             return "\(tool) is not installed; install it with: \(hint)"
         case .idbFailed(let command, let detail):
             return "idb \(command) failed: \(detail)"
+        case .daemonUnavailable(let udid):
+            return "no simprobe daemon for \(udid); start one with: "
+                + "simprobe daemon start --udid \(udid)"
         }
     }
 }

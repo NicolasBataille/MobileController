@@ -7,9 +7,17 @@ let package = Package(
     products: [
         .library(name: "SimProbeCore", targets: ["SimProbeCore"]),
         .executable(name: "simprobe", targets: ["simprobe"]),
+        // The warm action daemon, deliberately a *second* product: it is the only thing here
+        // that needs gRPC, and gRPC costs 22 transitive packages and a ~19-minute clean build
+        // (BoringSSL, for a plaintext unix socket). `swift build --product simprobe` never
+        // touches any of it. See `docs/plans/05-warm-daemon.md` §1.
+        .executable(name: "simprobe-daemon", targets: ["SimProbeDaemon"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
+        .package(url: "https://github.com/grpc/grpc-swift-2.git", from: "2.0.0"),
+        .package(url: "https://github.com/grpc/grpc-swift-protobuf.git", from: "2.0.0"),
+        .package(url: "https://github.com/grpc/grpc-swift-nio-transport.git", from: "2.0.0"),
     ],
     targets: [
         .target(name: "SimProbeCore"),
@@ -24,6 +32,18 @@ let package = Package(
             ]
         ),
         .executableTarget(name: "simprobe", dependencies: ["SimProbeCLI"]),
+        // Depends on the CLI library, never the reverse: the wire protocol, the router and the
+        // element parser are the same code on both sides of the socket, and the test bundle
+        // reaches them without ever linking gRPC.
+        .executableTarget(
+            name: "SimProbeDaemon",
+            dependencies: [
+                "SimProbeCLI",
+                .product(name: "GRPCCore", package: "grpc-swift-2"),
+                .product(name: "GRPCProtobuf", package: "grpc-swift-protobuf"),
+                .product(name: "GRPCNIOTransportHTTP2", package: "grpc-swift-nio-transport"),
+            ]
+        ),
         .testTarget(name: "SimProbeCoreTests", dependencies: ["SimProbeCore"]),
         .testTarget(name: "SimProbeCLITests", dependencies: ["SimProbeCLI"]),
     ]
