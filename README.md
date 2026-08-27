@@ -17,13 +17,13 @@ between **78 and 96,873 tokens** to observe — a 1,240x spread — while latenc
 (0.36–1.4 s). Observation tokens, not latency, are the dominant cost.
 
 So MobileController does not reimplement device automation. It adopts
-[agent-device](https://github.com/callstackincubator/agent-device) (callstack, MIT) as the engine,
+[agent-device](https://github.com/callstack/agent-device) (callstack, MIT) as the engine,
 driven strictly as a CLI from Bash — never as an MCP server — and ships the three things it does
 not: a skill encoding an observation ladder, `simprobe` for pixel truth, a warm daemon for loops.
 
 | A 30-action session | Observation cost | Per action |
 | --- | --- | --- |
-| Best existing alternative | ≈ 18,400 tokens | `press` ≈ 1.0–1.5 s |
+| Next-best measured tool | ≈ 18,400 tokens | `press` ≈ 1.0–1.5 s |
 | This project's ladder | ≈ 4,200–9,900 tokens | `simprobe tap` **16 ms** through the daemon |
 
 ## How it works
@@ -111,7 +111,8 @@ directory, so two shells silently drive two sessions on one device.
 [pitfalls](skill/references/pitfalls.md), [simprobe](skill/references/simprobe.md)). Its core is
 the escalation ladder:
 
-1. `agent-device snapshot -i --level digest --json` — refs and labels of interactive elements.
+1. `agent-device --level digest --json snapshot -i` — refs and labels of interactive elements
+   (`--level` is a global flag; on the 0.20.11-dev base this rung is larger than rung 2, see *Measured*).
 2. `agent-device snapshot -i` — when the digest has no ref matching the target.
 3. `agent-device snapshot` — structure questions: nesting, containers, non-interactive text.
 4. `simprobe frames --interactive` — **where** something is; no snapshot rung carries coordinates.
@@ -213,15 +214,16 @@ are written against it. Fixes for four of the five known limitations were merged
 
 ## Roadmap
 
-- Batched press sequences: `batch` already accepts `press`/`fill` given the right step shape.
-- Pluggable backends behind the skill's vocabulary.
-- Unpin agent-device once a release ships PRs #2065–#2068.
+- Unpin agent-device (and drop the patched build) once a release ships PRs #2065–#2068.
+- `tree --point x,y` and a mixed-engine row (`simprobe tap` + `agent-device snapshot -i`) in the bench.
+- Trim `skill/SKILL.md` below 130 lines without losing the ladder or the pitfalls pointers.
+- A real-app case study with token counts before/after, beyond Settings and the DemoApp.
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Every change ships with a test that failed before it; the
 gates are `swift test --enable-code-coverage` (80 % floor on `Sources/`), `swift format lint
---recursive Sources Tests`, and `./scripts/hygiene-check.sh`.
+--strict --recursive Sources Tests`, and `./scripts/hygiene-check.sh`.
 
 ## Documentation
 
@@ -239,7 +241,7 @@ gates are `swift test --enable-code-coverage` (80 % floor on `Sources/`), `swift
 
 ## Credits
 
-- [agent-device](https://github.com/callstackincubator/agent-device) by callstack (MIT) — the
+- [agent-device](https://github.com/callstack/agent-device) by callstack (MIT) — the
   automation engine. MobileController is a complement to it, not a fork of it.
 - [idb](https://github.com/facebook/idb) by Meta — the accessibility and HID path behind
   `frames`, `tap` and `tree`; its protos are MIT and the stubs are generated from the installed
