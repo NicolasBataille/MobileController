@@ -10,8 +10,9 @@ documents the step shape and the batchable set, and `help commands` grows a `Dev
 block listing the selection flags below. The fourth is a **cost** change, and it is not additive:
 `snapshot -i --level digest --json` came back at **1515 B** where 0.20.10 read 447 B on the same
 screen — pretty-printed inside a `{"success":true,"data":{…}}` envelope, and larger than plain
-`snapshot -i`. Treat every byte figure in the cost table below as a 0.20.10 figure and measure your
-own. `agent-device --version` says which build you have.
+`snapshot -i`. On the `0.20.11-dev` base (incl. this patched build), start at `snapshot -i` (rung 2
+of the skill's ladder) instead of the digest. Treat every byte figure in the cost table below as a
+0.20.10 figure and measure your own. `agent-device --version` says which build you have.
 
 ## Selection + global flags
 

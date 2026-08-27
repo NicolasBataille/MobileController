@@ -54,8 +54,41 @@ simprobe tree | tap <#id|x,y> | shot | wait-stable | motion
 
 Client verbs would connect to a per-UDID unix socket, autostarting the daemon when absent and retrying once; cold warm-client latency (~31 ms/tap) means a missing daemon degrades gracefully instead of failing outright. `SimProbeCore` stays pure; this adds one adapter beside the existing `simctl` one (`wait-stable` at 55 ms/frame vs ~200 ms today: 3.6x faster poll loop, same state machine) — a second transport to the same data, not a pluggable-backend decision; `simctl` capture stays the sole default/fallback.
 
-## Verdict: LATER — build it for v0.2, not now
+## Verdict: GO for v0.3 (`simprobe daemon start/stop`, `tap`, `tree`)
 
 The engineering risk is gone: grpc-swift v2 builds on Swift 6.3/macOS 26, talks to companion 1.5.0.b3 over the unix socket, private-API-free and signing-free. The win beats the forecast — tap 375 → 1.1 ms, tree 623 → 70 ms, screenshot 320 → 55 ms, taps landing 12/12 deterministically. But it's not free and not v1: 22 transitive packages and a ~19-minute clean build (BoringSSL, for a plaintext socket) against simprobe's current single dependency; a 19–36 MB binary against ~2 MB; a daemon lifecycle, socket and stale-pidfile story; a hard dependency on `idb_companion` being installed and connected.
 
-**The one condition that flips this to GO:** the mixed-engine test passes — an agent-device/XCUITest session open on the same simulator while idb HID taps land, and a snapshot through that session still returns a correct tree afterward — **not yet tested**: the XCUITest-based harness was unavailable on this machine, and an XCUITest session's own accessibility connection is the single biggest unknown (some Xcode betas are reported to silently no-op touches while such a session is open). simprobe sits *beside* agent-device, so a daemon that poisons its session is worse than a slow-but-safe CLI call. Run that test as soon as the harness is available; if it passes, build it — everything else here is already measured and works.
+**The one condition that flips this to GO:** the mixed-engine test passes — an agent-device/XCUITest session open on the same simulator while idb HID taps land, and a snapshot through that session still returns a correct tree afterward — **since tested — passed; see the coexistence section below**: the XCUITest-based harness was unavailable on this machine at the time, and an XCUITest session's own accessibility connection was the single biggest unknown (some Xcode betas are reported to silently no-op touches while such a session is open). simprobe sits *beside* agent-device, so a daemon that poisons its session is worse than a slow-but-safe CLI call. Run that test as soon as the harness is available; if it passes, build it — everything else here is already measured and works.
+
+## Coexistence test (2026-08-27)
+
+Closes the one open condition above: idb HID/AX beside a live agent-device XCUITest session.
+Same device (`<udid>`, iPhone 17 / iOS 26.5), agent-device `0.20.11-mc.1`, idb 1.5.0.b3.
+
+**Protocol:** open one agent-device session and keep it live throughout; alternate idb HID taps
+with agent-device `snapshot -i` reads, then the reverse (agent-device `press` with idb `tree`
+reads); fill a text field and idb-tap across tabs to check state survives; fire 50 rapid idb HID
+taps at a live session; compare a mixed observe-act loop against a pure-agent-device one.
+
+| Check | Result |
+|---|---|
+| idb HID tap → agent-device `snapshot -i`, 10x | 10/10 correct, 0 stale/empty/merged trees |
+| agent-device `press` → idb `tree`, 5x | 5/5 correct with a live session; every `AXUniqueId` present |
+| Text entry across engines | value intact after idb taps between fields |
+| 50 idb HID taps, tight loop | 53 ms total (≈1.07 ms/tap), zero expired-ref/`SESSION_NOT_FOUND`/runner crash |
+| Mixed loop vs pure agent-device, 10 iters | 526 ms/iter vs 1433 ms/iter — **2.7x faster**, both 10/10 correct |
+
+**Caveats carried into the design:**
+- idb screenshot breaks once the companion process outlives a simulator reboot, and reconnecting
+  does not heal it — capture stays on `simctl`/simprobe-native, and `daemon start` must smoke-test
+  the companion's screenshot path specifically, not just tree size.
+- Node counts are not comparable across engines (idb's tree is leaner by design, skipping the tab
+  bar and secondary text) — never diff node counts across `idb`/agent-device, and never use idb to
+  assert an element's *absence*.
+- Blind coordinate taps are swallowed by overlays (keyboard, sheets) on **both** engines —
+  agent-device's `press` is itself a coordinate tap and fails the same way, just as silently. Verify
+  with `wait-stable`/diff after every tap, on either engine.
+- `agent-device session list` is not a liveness probe: it returns `{"sessions": []}` for a live,
+  working session opened under an explicit `--session`.
+
+**Verdict: GO for v0.3.**

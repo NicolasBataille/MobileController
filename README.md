@@ -124,6 +124,8 @@ What changes, against the five items listed under *Known upstream limitations* b
 | 4 — `--device <udid>` does not hint at `--udid` (#2064) | **Fixed** (PR #2065). The error answers `Did you mean --udid …?`, and `help commands` grows a `Device Selection` block listing `--udid` |
 | 5 — implicit cwd-hash sessions coexist with `--session` (#1394) | **Not fixed.** #2068 makes the implicit session *addressable* by its `cwd:<hash>:<name>` key; it does not merge the two scopes. Keep passing `--session` on every call |
 
+One thing this build does *not* fix: `--level digest --json snapshot -i` grew from 447 B on 0.20.10 to roughly 1.5 KB on the `0.20.11-dev` base this build sits on — larger than plain `snapshot -i` — see the measured tables below.
+
 ## Install the skill
 
 `skill/` is a Claude Code skill: `SKILL.md` plus three on-demand reference files. Copy the whole
@@ -468,7 +470,7 @@ fixed in the optional [patched build](#optional-patched-agent-device-build); on 
 
 ## Future work
 
-- [Warm idb-gRPC daemon spike](docs/plans/04-warm-daemon-spike.md) — a warm gRPC connection to `idb_companion` cuts tap/tree/screenshot latency by roughly 340x/9x/6x (375→1.1 ms, 623→70 ms, 320→55 ms) and is private-API-free, but verdict is **LATER**: it's parked pending a mixed-engine test (idb HID taps alongside an open agent-device/XCUITest session) that couldn't be run yet.
+- **Planned for v0.3: warm action daemon** (GO after the coexistence test — see [docs/plans/04-warm-daemon-spike.md](docs/plans/04-warm-daemon-spike.md)) — a warm gRPC connection to `idb_companion` cuts tap/tree/screenshot latency by roughly 340x/9x/6x (375→1.1 ms, 623→70 ms, 320→55 ms) and is private-API-free; the mixed-engine test (idb HID taps alongside an open agent-device/XCUITest session) passed, with a mixed observe-act loop running **2.7x faster** than pure agent-device (526 vs 1433 ms/iter).
 
 ## Credits
 
