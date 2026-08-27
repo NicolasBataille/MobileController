@@ -224,6 +224,29 @@ final class DaemonHardeningTests: XCTestCase {
         XCTAssertFalse(DaemonRecord.removeIfOwned(path: path, pid: 4_242))
     }
 
+    /// Everything the daemon owns is 0600, the pidfile included, and none of it is written
+    /// through a symlink somebody else planted.
+    func testThePidfileIsWrittenPrivatelyAndReplacedInPlace() throws {
+        let directory = try makeDirectory(mode: 0o700)
+        let path = directory.appendingPathComponent("UDID.pid").path
+        let first = DaemonRecord(pid: 1, udid: "UDID", executable: "/x/simprobe-daemon")
+        let second = DaemonRecord(pid: 4_242, udid: "UDID", executable: "/x/simprobe-daemon")
+
+        try first.write(to: path)
+        try second.write(to: path)
+
+        XCTAssertEqual(DaemonRecord.read(from: path), second)
+        let attributes = try FileManager.default.attributesOfItem(atPath: path)
+        XCTAssertEqual(attributes[.posixPermissions] as? Int, 0o600)
+
+        let link = directory.appendingPathComponent("linked.pid")
+        try FileManager.default.createSymbolicLink(
+            at: link, withDestinationURL: directory.appendingPathComponent("victim"))
+        XCTAssertThrowsError(try second.write(to: link.path)) { error in
+            XCTAssertEqual((error as? ProbeError)?.exitCode, 5)
+        }
+    }
+
     /// A pid is only signalled when the path it was recorded with is a daemon's.
     func testNothingButADaemonBinaryIsEverSignalled() throws {
         let own = ProcessInfo.processInfo.processIdentifier

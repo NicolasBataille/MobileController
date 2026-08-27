@@ -120,13 +120,10 @@ public struct DaemonRecord: Codable, Equatable, Sendable {
         self.executable = executable
     }
 
+    /// Written `0600` and without following a symlink, like the log and the socket beside it.
+    /// The directory is already private to this user; this is the second lock on the same door.
     public func write(to path: String) throws {
-        do {
-            try Data(try JSONLine.encode(self).utf8).write(to: URL(fileURLWithPath: path))
-        } catch {
-            throw ProbeError.captureFailed(
-                "could not write \(path): \(error.localizedDescription)")
-        }
+        try SecureFile.write(Data(try JSONLine.encode(self).utf8), toPath: path)
     }
 
     /// - Returns: `nil` when there is no pidfile, or it is not readable as one. An unreadable

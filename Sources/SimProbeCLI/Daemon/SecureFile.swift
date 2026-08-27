@@ -101,6 +101,32 @@ public enum SecureFile {
         return descriptor
     }
 
+    /// Replaces a file's contents, creating it `0600` and never following a symlink.
+    ///
+    /// - Throws: `ProbeError.captureFailed` (exit 5), naming the path.
+    public static func write(_ data: Data, toPath path: String) throws {
+        let descriptor = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, fileMode)
+        guard descriptor >= 0 else {
+            throw ProbeError.captureFailed("could not write \(path): \(errno)")
+        }
+        defer { close(descriptor) }
+        // A pre-existing file keeps the mode it was created with, and this one may have been
+        // created by an older build.
+        fchmod(descriptor, fileMode)
+        var remaining = Array(data)[...]
+        while !remaining.isEmpty {
+            let written = remaining.withUnsafeBytes {
+                Darwin.write(descriptor, $0.baseAddress, $0.count)
+            }
+            switch SocketIO.classify(count: written, errno: errno) {
+            case .bytes(let count): remaining = remaining.dropFirst(count)
+            case .interrupted: continue
+            case .timedOut, .closed, .failed:
+                throw ProbeError.captureFailed("could not write all of \(path): \(errno)")
+            }
+        }
+    }
+
     private static func lstatus(ofPath path: String) -> stat? {
         var status = stat()
         guard lstat(path, &status) == 0 else { return nil }
