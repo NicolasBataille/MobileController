@@ -20,6 +20,9 @@ All notable changes to this project are documented here. The format follows
 - `scripts/bump-formula.sh <tag>`: rewrites the formula's url and sha256 from the real tarball,
   so a release cannot silently ship the previous binary.
 
+### Docs
+- docs: warm-daemon spike results
+
 ## [0.1.0] — 2026-08-26
 
 First public alpha, measured on Xcode 26.6 / iOS 26.5 with agent-device 0.20.10.

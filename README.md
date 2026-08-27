@@ -393,6 +393,10 @@ carries the workaround for each; reported upstream on
 5. [#1394 (comment)](https://github.com/callstack/agent-device/issues/1394#issuecomment-5430618195) — The implicit cwd-hash session name coexists with an explicit `--session`, so two
    shells in different directories silently drive two sessions on one device.
 
+## Future work
+
+- [Warm idb-gRPC daemon spike](docs/plans/04-warm-daemon-spike.md) — a warm gRPC connection to `idb_companion` cuts tap/tree/screenshot latency by roughly 340x/9x/6x (375→1.1 ms, 623→70 ms, 320→55 ms) and is private-API-free, but verdict is **LATER**: it's parked pending a mixed-engine test (idb HID taps alongside an open agent-device/XCUITest session) that couldn't be run yet.
+
 ## Credits
 
 - [agent-device](https://github.com/callstackincubator/agent-device) by callstack — MIT.
