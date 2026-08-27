@@ -4,6 +4,11 @@ Pinned: **agent-device 0.20.10 / Xcode 26.6 / iOS 26.5**. Every flag below was r
 `agent-device help` / `agent-device help <command>` at 0.20.10. Anything not in help output is
 tagged `(unverified)`. Failure modes live in `pitfalls.md` — read it before your first `open`.
 
+The optional patched build (`0.20.11-mc.1`, see the project README) changes three things on this
+page, all additive: `fill <target> ""` is accepted and clears the field, `help batch` documents the
+step shape and the batchable set, and `help commands` grows a `Device Selection` block listing the
+selection flags below. Nothing here is *removed* by it. `agent-device --version` says which you have.
+
 ## Selection + global flags
 
 Selection flags are **not** listed under "Global Flags" in `help commands`; they appear in the
@@ -13,7 +18,7 @@ CLI flag schema and verbatim in `help device` / `help doctor` hints.
 |---|---|
 | `--platform ios\|android\|web\|macos\|…` | Platform to target (`apple` aliases the Apple backend) |
 | `--device <name>` | Device **name** to target — never a UDID (see pitfalls) |
-| `--udid <udid>` | iOS device UDID. Shown in `help device` usage; live pinning `(unverified)` |
+| `--udid <udid>` | iOS device UDID. Shown in `help device` usage; live pinning **verified** on 0.20.10 and 0.20.11-mc.1 (`pitfalls.md` §4). Listed under `Device Selection` in `help commands` on the patched build only |
 | `--serial <serial>` | Android / Vega serial |
 | `--session <name>` | Named session. **Always pass it explicitly** |
 | `--level digest\|default\|full` | Response detail. `digest` = token-cheap. **Global**, not a `snapshot` flag |
@@ -34,12 +39,12 @@ CLI flag schema and verbatim in `help device` / `help doctor` hints.
 | `scroll` | `scroll <direction|top|bottom> [amount] [--pixels <n>] [--duration-ms <ms>] [--settle]` |
 | `back` | `back [--in-app|--system] [--settle]` |
 | `wait` | `wait <ms>|text <text>|@ref|<selector>|stable [quietMs] [timeoutMs]` — `stable` = AX-tree quiescence only |
-| `is` | `is <predicate> <selector> [value]` — visible, hidden, editable, selected, focused, text |
-| `get` | `get text|attrs <@ref|selector>` — `attrs` returns the attribute map incl. `value` and `rect`. Only `text`\|`attrs` exist |
+| `is` | `is <predicate> <selector> [value]` — visible, hidden, editable, selected, focused, text. `is text` compares the **label**, not the value (`pitfalls.md` §15) |
+| `get` | `get text|attrs <@ref|selector>` — `attrs` returns the attribute map incl. `label`, `value` and `rect`. Only `text`\|`attrs` exist. `get text` returns the **label**, not the value (`pitfalls.md` §15) |
 | `find` | `find <locator|text> <action> [value] [--first|--last]` — contains-matching, then act |
 | `screenshot` | `screenshot [path] [--out <path>] [--overlay-refs] [--pixel-density <n>] [--scale <0.01-1>] [--normalize-status-bar] [--no-stabilize] [--fullscreen]`. iOS sim defaults to **1x logical points** |
 | `diff` | `diff snapshot` \| `diff screenshot --baseline <path> [current.png] [--out <diff.png>] [--threshold <0-1>] [--overlay-refs]`. `diff snapshot` accepts `-i`/`-d`/`-s` |
-| `session` | `session list` \| `session state-dir` \| `session save-script [path] [--force]` |
+| `session` | `session list` \| `session state-dir` \| `session save-script [path] [--force]`. `session list` filters by the caller's scope — pass the same `--session` you opened with (`pitfalls.md` §14) |
 | `close` | `close [app] [--shutdown] [--save-script [path]] [--force]` — `--shutdown` also stops the simulator |
 | `daemon` | `daemon stop [--state-dir <path>] [--clean]` — `--clean` removes **retained Apple runner processes and leases** owned by that daemon. This is the sanctioned deep teardown |
 | `batch` | `batch [--steps <json>|--steps-file <path>] [--on-error stop] [--max-steps <n>] [--out <path>]` — steps are `{"command":"<name>","input":{...}}`; `press`/`fill`/`click` **are** batchable (pitfalls) |

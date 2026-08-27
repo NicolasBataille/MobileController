@@ -7,6 +7,9 @@ description: Drive and observe an iOS Simulator from Bash at minimum token cost 
 
 Verified against exactly one triple: **agent-device 0.20.10 / Xcode 26.6 / iOS 26.5**.
 If any of those drifts, re-run `bench/run.sh` before trusting a number below.
+An optional patched build (`0.20.11-mc.1`, see the project README) fixes four of the limitations
+called out here; every rule below is written for the pinned 0.20.10 and stays correct on both.
+Check which one you have with `agent-device --version` before you trust a "this is rejected".
 
 Two binaries, both driven from **Bash**. Never as an MCP server.
 - `agent-device` — accessibility tree, actions, sessions.
@@ -54,9 +57,15 @@ and more under host load. Raise `--timeout` rather than lowering `--tol`.
 
 **Text entry: always `fill`.** `agent-device fill @<ref> "text"` uses XCUITest `typeText`, which
 is layout-independent and verified verbatim on an AZERTY simulator. It *replaces* the value.
-There is **no clear primitive** — `fill @ref ""` is rejected. To empty a field, press the app's
-own clear button, or `press @<delete-key> --count N` on the keyboard element (its label is
-locale-dependent; read it from a snapshot). See `references/pitfalls.md` §6.
+There is **no clear primitive at 0.20.10** — `fill @ref ""` is rejected. To empty a field, press
+the app's own clear button, or `press @<delete-key> --count N` on the keyboard element (its label
+is locale-dependent; read it from a snapshot). On the patched build `fill @ref ""` *is* the clear
+primitive (a *missing* text argument is still refused). See `references/pitfalls.md` §6.
+
+**Reading a value back: `get attrs`, never `get text`/`is text`.** Both of those resolve to the
+accessibility **label** — the element's name — while what it displays lives in `value`. On an
+element carrying both, `is text @ref "example.com"` fails against the label and looks like a bug in
+the app. Read `get attrs` and match the `value` field specifically. See `references/pitfalls.md` §15.
 
 **Launch with fixtures:** `agent-device open com.example.app --launch-args <arg>` — repeatable,
 forwarded verbatim. Do not shell out to `simctl launch` for this.
@@ -82,8 +91,14 @@ Apple Watch, and every action afterwards lands on the wrong device. With **sever
 simulators booted the first entry is merely the newest runtime — assert the target by snapshot
 content (or pass the UDID explicitly) before acting on it.
 
+`agent-device session list` filters by the **caller's** scope, so a session opened under an
+explicit `--session` lists as `{"sessions": []}` from a cwd-scoped shell. Pass the same
+`--session` to the listing before concluding nothing is open (`references/pitfalls.md` §14).
+
 **Teardown, in order:** `agent-device close` → `agent-device daemon stop --clean` (the sanctioned
 reclaim of retained runner processes and leases). Add `close --shutdown` to stop the simulator.
+`daemon stop --clean` reclaims **every** retained runner and lease owned by that daemon, not just
+yours: if another run shares the host daemon, give yours its own `AGENT_DEVICE_STATE_DIR` first.
 
 ## 4. The five hard DON'Ts
 
@@ -126,7 +141,8 @@ agent-device daemon stop --clean                                  # sanctioned r
 
 - `references/agent-device-cheatsheet.md` — every verb and flag, output shapes, measured costs,
   environment variables.
-- `references/pitfalls.md` — eleven symptom → cause → workaround entries: REAPER GUARD, the lease
-  leak, cwd-hash sessions, AZERTY, field clearing, stale refs, host-load failures.
+- `references/pitfalls.md` — fifteen symptom → cause → workaround entries: REAPER GUARD, the lease
+  leak, cwd-hash sessions, AZERTY, field clearing, stale refs, host-load failures, scoped
+  `session list`, and label-vs-value reads.
 - `references/simprobe.md` — the six simprobe verbs, exit codes, `--json` shapes, how to read a motion
   timeline, and the `frames` banding/ref format.

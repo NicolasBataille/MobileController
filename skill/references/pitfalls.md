@@ -3,6 +3,10 @@
 Pinned: **agent-device 0.20.10 / Xcode 26.6 / iOS 26.5**. Every entry was observed on a real
 simulator during the bake-off unless tagged `(unverified)`. Syntax: `agent-device-cheatsheet.md`.
 
+Entries that an **optional patched build** (`0.20.11-mc.1`, README ▸ *Optional: patched
+agent-device build*) resolves carry a **Fixed in the patched build** line. They are kept rather
+than deleted: the pin above is 0.20.10, and on 0.20.10 every one of them is still live.
+
 ## 1. REAPER GUARD — never `pkill` anything agent-device started
 **Symptom.** After `pkill -f AgentDeviceRunner`, accessibility died **device-wide** on that sim:
 `idb ui describe-all` → 1 element, frame 0x0; `axe describe-ui` → same; a third tool → "the
@@ -40,6 +44,10 @@ a bare `snapshot` afterwards fails `SESSION_NOT_FOUND`:
 agent-device open com.example.app --platform ios --session default
 agent-device snapshot -i --session default
 ```
+**Fixed in the patched build / upstream #2057** (in `main`, and in `0.20.11-mc.1`): `close`
+releases the claim, so a plain `open` afterwards succeeds. Upstream PR #2068 additionally makes
+the `DEVICE_IN_USE` message's own recovery hint executable — it now names the session by its
+addressable `cwd:<hash>:<name>` store key rather than by a name nothing accepts.
 
 ## 3. Implicit session names are a cwd hash and coexist with `--session`
 **Symptom.** `open --session default` works, then a bare `snapshot` fails `SESSION_NOT_FOUND`.
@@ -49,7 +57,16 @@ Two sessions sit side by side: `~/.agent-device/sessions/default` and
 from a different cwd — or without the flag after one with it — lands in a different session and
 disagrees about device state.
 **Workaround.** Pass `--session <name>` on **every** command, or export `AGENT_DEVICE_SESSION`
-once for the shell. `agent-device session list` shows what exists before you debug anything else.
+once for the shell.
+**`session list` will not rescue you, and this is not a patched-build regression.** It filters by
+the *caller's* implicit scope, so a session opened with an explicit `--session` is invisible to a
+bare `session list` run from a cwd-scoped shell — an alive, usable session reports
+`{"sessions": []}`. Address the listing the same way you address everything else:
+`agent-device session list --session <name>` (entry 14).
+**Partly fixed in the patched build / upstream PR #2068**: the cwd-scoped session is now addressed
+by its store key, so `DEVICE_IN_USE` names a `--session cwd:<hash>:default` you can actually pass,
+and `session list` reports a `sessionStateDir` that exists. The two scopes are still separate, and
+the "pass `--session` on every command" rule stands unchanged — verified on `0.20.11-mc.1`.
 
 ## 4. `--device` takes a name; `--udid` takes a UDID
 **Symptom.** `--device <a-udid-string>` → `DEVICE_NOT_FOUND`, with no hint that `--udid` exists.
@@ -64,6 +81,10 @@ opened on the pinned device and `snapshot -i` returned that device's tree; `xcru
 <udid> launchctl list` confirmed the app was running on it and not on its sibling. No fallback
 is needed. `--udid` still does not appear in the `help commands` Global Flags block, so it
 remains easy to miss.
+**Fixed in the patched build / upstream PR #2065**: `--device <a-udid>` now answers
+`Hint: <udid> is the id of "<name>", not its name. Did you mean --udid <udid>?`, and
+`help commands` grows a `Device Selection` block that lists `--platform`, `--device`, `--udid`,
+`--serial` and `--session`.
 
 ## 5. AZERTY / non-QWERTY: `fill` yes, HID keycodes no
 **Symptom.** HID-keycode text entry on an AZERTY-French sim corrupts silently — `example.com` read
@@ -92,8 +113,13 @@ agent-device get attrs @e57      # -> {"value":"example.com", …}  => 11 chars
 agent-device snapshot -i         # -> @e38 [key] "supprimer"
 agent-device press @e38 --count 11 --settle
 ```
+**Fixed in the patched build / upstream PR #2066**: `fill <target> ""` *is* the clear-field
+primitive — it empties the field and reports `Filled 0 chars`. A **missing** text argument is
+still refused (`INVALID_ARGS: Expected text to be set.`), by design: an omitted argument is a
+mistake, an empty string is an intention. The keyboard-delete workaround above is only needed on
+0.20.10.
 
-## 7. `batch` step shape is undocumented, not the verb set
+## 7. `batch` steps are objects, not positionals
 **Symptom.** Object-shaped steps written the obvious way fail: `unknown legacy field(s):
 args|target|argv`. `help batch` and the error text never say what a step should look like, so this
 reads as "press/fill/click aren't batchable."
@@ -107,6 +133,10 @@ agent-device batch --steps '[{"command":"press","input":{"target":{"kind":"selec
 ```
 Use selectors, not `@ref` targets, for any step after the first mutation — a second mutating step
 addressed by `@ref` fails `ref_frame_expired` because the first step invalidates the ref frame.
+**Fixed in the patched build / upstream PR #2067** — the *documentation*, not the shape. The shape
+above is unchanged and still required; what changes is that `help batch` now prints it
+(`Each step is {"command":"<name>","input":{...}}` · `There is no positional step form`) along
+with the batchable set, and all three refusals point back at it.
 
 ## 8. Host load produces hard failures, not slowdowns
 **Symptom.** `fill …` → `Error (COMMAND_FAILED): main thread execution timed out` after ~50 s at
@@ -168,3 +198,40 @@ rather than an error.
 test deletes the file before measuring (`AdapterTests.testCaptureSurvivesRemovalOfTheTemporaryFile`).
 Symptom 12 and this one look identical from the outside; distinguish them by checking the PNG on
 disk before it is removed.
+
+## 14. `session list` hides a session opened with an explicit `--session`
+**Symptom.** A session is demonstrably alive — `open --session prewarm` returned
+`Opened: com.apple.Preferences`, `snapshot -i --session prewarm` returns that device's tree — and
+yet `agent-device session list` from the same shell prints `{"sessions": []}`. Nothing reports an
+error, so the natural reading is "the session died", and the next move is to re-`open` and collect
+a `DEVICE_IN_USE` for the trouble.
+**Cause.** `session list` filters by the **caller's** implicit scope, which with no `--session` is
+the cwd hash of entry 3. A session created under an explicit name lives outside that scope, so it
+is filtered out of the listing rather than reported. The filter is orthogonal to the fixes in the
+patched build — it behaves identically on 0.20.10 and on `0.20.11-mc.1`.
+**Workaround.** List with the same addressing you opened with:
+```bash
+agent-device session list --session prewarm          # or: AGENT_DEVICE_SESSION=prewarm agent-device session list
+```
+Never treat an empty `session list` as proof that nothing is open — check with the session name
+before concluding, or before re-opening. (Verified live on `0.20.11-mc.1`.)
+
+## 15. `is text` / `get text` read the label, not the value
+**Symptom.** A label that echoes what the user typed reads back wrong:
+`agent-device is text id=form.echoLabel example.com` fails with
+`expected="example.com" actual="Echo"`, even though the screen plainly shows `example.com` and
+`get attrs` on the same element reports `"value": "example.com"`.
+**Cause.** Both `is text` and `get text` resolve to the element's accessibility **label** — the
+element's *name* (`Echo`), which is what a screen reader announces first. The content the element
+is displaying lives in the separate `value` attribute. On an element carrying only one of the two
+the distinction never shows up, which is what makes it a trap on the elements that carry both.
+**Workaround.** Assert on `value`, read through `get attrs`:
+```bash
+agent-device get attrs id=form.echoLabel     # -> { …, "label": "Echo", "value": "example.com", … }
+```
+Match the `value` field specifically, not the blob: a substring match over the whole attribute map
+passes on the label and on any other field that happens to contain the text. The reverse trap is
+just as real — asserting on a **label** with `get attrs` and a loose match passes on an empty
+field, because the label is present whatever the value is. This is not a patched-build change:
+`is`'s implementation has had no semantic churn upstream since `v0.20.10`.
+(Verified live on `0.20.11-mc.1`.)
