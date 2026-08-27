@@ -33,7 +33,8 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 - Two executable products instead of one. `simprobe` keeps its single dependency and its ~1-minute
   clean build (58 s measured, 2.7 MB); gRPC's 22 transitive packages live in `simprobe-daemon`
-  alone (38.5 MB), and `swift build --product simprobe` never compiles any of them.
+  alone (38.5 MB, 253 s for a first clean build of both), and `swift build --product simprobe`
+  never compiles any of them.
 - `Formula/simprobe.rb` installs both binaries and asserts both in `test do`. The change takes
   effect at the next `scripts/bump-formula.sh` tag; the pinned v0.2.0 tarball predates it.
 - `skill/SKILL.md` gains a "fast action path" paragraph and loses redundancy elsewhere to stay

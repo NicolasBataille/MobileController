@@ -3,7 +3,7 @@
 Implements the GO in [04-warm-daemon-spike.md](04-warm-daemon-spike.md). Numbers there: HID tap
 375 ms → **1.1 ms**, AX tree 623 ms → **70 ms**, a mixed loop **2.7x** faster than pure
 agent-device, taps landing 12/12. The cost is 22 transitive packages and a clean build that grows
-from one minute to four. This document is about paying that cost without charging it to `simprobe`.
+from one minute to four — paid, this document argues, without charging it to `simprobe`.
 
 ## 1. Two products, one heavy
 
@@ -27,11 +27,12 @@ client's own descriptor**, not upstream `idb.proto`: upstream has grown fields t
 companion rejects. The script dumps `idb.grpc.idb_pb2.DESCRIPTOR` to a `FileDescriptorSet` and
 feeds `protoc --descriptor_set_in`, so the stubs are wire-compatible by construction.
 
-**Build-time budget**, measured here (8-core Apple Silicon): clean `--product simprobe` **58 s**,
-clean `swift build` **253 s**, clean `-c release` **347 s** — the spike's ~19 minutes was a loaded
-box, not the real cost. At 4 minutes the full build fits a 10-minute CI budget, and `swift test`
-builds the whole graph regardless, so **CI keeps one job and pays it** rather than splitting the
-daemon into a cached job of its own. Binaries: 2.7 MB against 38.5 MB.
+**Build-time budget**, measured here (8-core Apple Silicon, `.build` deleted first): `--product
+simprobe` **58 s**; `swift build` **253 s** the first time and **115 s** after, since SwiftPM's
+shared cache outlives `.build`; `-c release` **347 s**. The spike's ~19 minutes was a loaded box,
+not the real cost. Four minutes fits a 10-minute CI budget, and `swift test` builds the whole graph
+regardless — so **CI keeps one job and pays it** rather than splitting the daemon into a cached job
+of its own. Binaries: 2.7 MB against 38.5 MB.
 
 ## 2. Wire protocol: newline-delimited JSON over a unix socket
 

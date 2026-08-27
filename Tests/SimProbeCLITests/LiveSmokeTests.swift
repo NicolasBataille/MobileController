@@ -133,8 +133,9 @@ final class LiveSmokeTests: XCTestCase {
     func testLiveDaemonStartTapTreeStop() throws {
         let context = try liveContext()
         let executable = try daemonExecutable()
-        let paths = DaemonPaths(
-            base: URL(fileURLWithPath: "/var/tmp/sp-live-\(UUID().uuidString.prefix(8))"))
+        let base = URL(
+            fileURLWithPath: "/var/tmp/sp-live-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        let paths = DaemonPaths(base: base)
         let client = UnixSocketDaemonClient(
             path: paths.socket(udid: context.udid), udid: context.udid)
         let launcher = DaemonLauncher(
@@ -151,10 +152,10 @@ final class LiveSmokeTests: XCTestCase {
         // the sake of a cleanup block.
         let socketPath = paths.socket(udid: context.udid)
         let udid = context.udid
-        let directory = paths.directory
         addTeardownBlock {
             _ = try? UnixSocketDaemonClient(path: socketPath, udid: udid).send(.stop)
-            try? FileManager.default.removeItem(at: directory)
+            // The base, not just the socket directory inside it: a live run must litter nothing.
+            try? FileManager.default.removeItem(at: base)
         }
 
         let report = try launcher.start(DaemonLaunchOptions(udid: context.udid))

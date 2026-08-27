@@ -73,8 +73,9 @@ swift build -c release                      # ~6 min: adds simprobe-daemon and i
 
 `.build/release/simprobe` is 2.7 MB and needs only ArgumentParser. `simprobe-daemon` is 38.5 MB
 and pulls in 22 transitive packages, which is exactly why it is a **separate product**: build it
-only if you want the warm `tap`/`tree` path. Measured clean, on 8 cores: 58 s for the CLI alone,
-253 s for both in debug, 347 s for both in release.
+only if you want the warm `tap`/`tree` path. Measured on 8 cores with `.build` deleted first:
+**58 s** for the CLI alone, **253 s** for both the first time and **115 s** afterwards (SwiftPM's
+shared cache outlives `.build`), **347 s** for both in release.
 
 Add `.build/release` to your `PATH`, or call the binaries by their full paths — `tap` and `tree`
 look for `simprobe-daemon` beside the running `simprobe`, so keep the two together.
